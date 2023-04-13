@@ -48,7 +48,7 @@ struct SergeInt32 {
 };
 
 
-struct SergeFLoat64 {
+struct SergeFloat64 {
     GCMetaData  MetaData;
     double      Data;
 };

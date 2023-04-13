@@ -3,12 +3,11 @@
 #include <cstdint>
 #include <vector>
 
+
+/// \deprecated we will use new GC manager and allocators.
 struct GCAllocator {
     GCObjectHandle Root;
     std::vector<GCObjectHandle> Heaps;
-
-    inline static GCObjectHandle GCMalloc();
-    inline static void           GCFree(GCObjectHandle);
 };
 
 GCAllocator Allocator;

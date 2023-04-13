@@ -50,7 +50,11 @@ fn main() {
     let mut cfg = cc::Build::new();
 
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
-    cfg.file("wrapper/GCObject.cpp")
+    cfg.file("wrapper/GCMain.cpp")
+        .file("wrapper/Allocator.cpp")
+        .file("wrapper/Int.cpp")
+        .file("wrapper/Float.cpp")
+        .file("wrapper/Array.cpp")
         .target(&target)
         .host(&host)
         .cpp(true)
