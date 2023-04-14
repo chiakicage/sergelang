@@ -3,6 +3,7 @@
 #include <cstring>
 #include <algorithm>
 
+/// \brief Runtime exposed Array object manipulate API
 
 extern "C"
 SergeArray *__serge_runtime_alloc_array(size_t capacity) {
@@ -10,6 +11,7 @@ SergeArray *__serge_runtime_alloc_array(size_t capacity) {
     auto ptr = static_cast<SergeArray *>(GCMalloc(sizeof(SergeArray)));
 
     ptr->MetaData.Kind = GCMetaData::Array;
+    ptr->MetaData.Mark = 0;
     ptr->Length = 0;
     ptr->Capacity = init_capacity;
     ptr->DataPtr = RawMalloc(init_capacity * sizeof(GCObjectHandle));

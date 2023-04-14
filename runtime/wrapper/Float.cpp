@@ -1,12 +1,13 @@
 #include "GCObject.h"
 #include "Allocator.h"
 
-
+/// \brief Runtime exposed Float object manipulate API
 
 extern "C"
 SergeFloat64 *__serge_runtime_alloc_f64() {
     auto ptr = static_cast<SergeFloat64 *>(GCMalloc(sizeof(SergeFloat64)));
     ptr->MetaData.Kind = GCMetaData::Float;
+    ptr->MetaData.Mark = 0;
     return ptr;
 }
 

@@ -1,12 +1,13 @@
 #include "GCObject.h"
 #include "Allocator.h"
 
-
+/// \brief Runtime exposed Int object manipulate API
 
 extern "C"
 SergeInt32 *__serge_runtime_alloc_i32() {
     auto ptr = static_cast<SergeInt32 *>(GCMalloc(sizeof(SergeInt32)));
     ptr->MetaData.Kind = GCMetaData::Int;
+    ptr->MetaData.Mark = 0;
     return ptr;
 }
 
