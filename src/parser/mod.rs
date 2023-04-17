@@ -107,8 +107,8 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                     rhs: Box::new(rhs),
                 });
 
-            let r#if = just(Token::If)
-                .ignore_then(comparison.clone())
+            let r#if = just::<_, _, Simple<Token>>(Token::If)
+                .ignore_then(expr.clone())
                 .then(block.clone())
                 .then(just(Token::Else).ignore_then(block.clone()).or_not())
                 .map(|((cond, then), els)| Expr::If {
@@ -119,10 +119,13 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                         None => None,
                     },
                 });
-            r#if.or(block.clone().map(|x| Expr::Braket(Box::new(x))))
+            comparison
+                .or(sum)
+                .or(r#if)
+                .or(block.clone().map(|x| Expr::Braket(Box::new(x))))
         });
 
-        let r#let = just(Token::Let)
+        let stmt_let = just::<_, _, Simple<Token>>(Token::Let)
             .ignore_then(ident)
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
@@ -132,7 +135,7 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                 rhs: Box::new(rhs),
             });
 
-        let r#return = just(Token::Return)
+        let stmt_return = just::<_, _, Simple<Token>>(Token::Return)
             .ignore_then(expr.clone().or_not())
             .then_ignore(just(Token::Semicolon))
             .map(|x| {
@@ -142,7 +145,7 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                     Stmt::Return(None)
                 }
             });
-        let r#while = just(Token::While)
+        let stmt_while = just::<_, _, Simple<Token>>(Token::While)
             .ignore_then(expr.clone())
             .then(block.clone())
             .map(|(cond, body)| Stmt::While {
@@ -150,7 +153,7 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                 body: Box::new(body),
             });
 
-        let r#for = just(Token::For)
+        let stmt_for = just::<_, _, Simple<Token>>(Token::For)
             .ignore_then(ident)
             .then_ignore(just(Token::In))
             .then(expr.clone())
@@ -163,24 +166,39 @@ pub fn parser() -> impl Parser<Token, Module, Error = Simple<Token>> {
                 end: Box::new(end),
                 body: Box::new(body),
             });
-        let r#break = just(Token::Break)
+        let stmt_break = just::<_, _, Simple<Token>>(Token::Break)
             .then_ignore(just(Token::Semicolon))
             .to(Stmt::Break);
-        let r#continue = just(Token::Continue)
+        let stmt_continue = just::<_, _, Simple<Token>>(Token::Continue)
             .then_ignore(just(Token::Semicolon))
             .to(Stmt::Continue);
-
+        let stmt_assign = ident
+            .clone()
+            .then_ignore(just::<_, _, Simple<Token>>(Token::Assign))
+            .then(expr.clone())
+            .map(|(name, rhs)| Stmt::Assign {
+                name,
+                rhs: Box::new(rhs),
+            });
         let stmt_expr = expr
             .clone()
             .then_ignore(just(Token::Semicolon))
             .map(|x| Stmt::Expr(Box::new(x)));
 
-        let stmt = choice((
-            r#let, r#return, r#while, r#for, r#break, r#continue, stmt_expr,
+        let stmt = choice::<_, Simple<Token>>((
+            stmt_let,
+            stmt_return,
+            stmt_while,
+            stmt_for,
+            stmt_break,
+            stmt_continue,
+            stmt_assign,
+            stmt_expr,
         ));
 
-        stmt_expr.clone()
+        stmt.clone()
             .repeated()
+            .at_least(1)
             .or_not()
             .then(expr.clone().or_not())
             .delimited_by(just(Token::LBrace), just(Token::RBrace))

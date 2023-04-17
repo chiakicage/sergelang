@@ -38,7 +38,10 @@ pub enum Stmt {
     Return(Option<Box<Expr>>),
     Break,
     Continue,
-    Assign,
+    Assign {
+        name: String,
+        rhs: Box<Expr>,
+    },
     Expr(Box<Expr>),
 }
 
@@ -55,13 +58,6 @@ pub enum BinOp {
     Gt,
     Lte,
     Gte,
-    And,
-    Or,
-    BitAnd,
-    BitOr,
-    BitXor,
-    BitLShift,
-    BitRShift,
 }
 #[derive(Debug, Clone)]
 pub enum UnOp {
@@ -72,7 +68,6 @@ pub enum UnOp {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-
     Num(f64),
     Var(String),
 
@@ -94,7 +89,7 @@ pub enum Expr {
 
     Call(String, Vec<Expr>),
 
-    Braket(Box<Block>)
+    Braket(Box<Block>),
 }
 
 pub enum Literal {
