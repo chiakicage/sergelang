@@ -9,6 +9,13 @@ pub enum Token {
     For,
     While,
     Fn,
+    Return,
+    Break,
+    Continue,
+    Match,
+    In,
+    To,
+    As,
     LParen,
     RParen,
     LBrace,
@@ -48,7 +55,19 @@ pub enum Token {
 }
 
 pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
-    let tokens = choice::<_, Simple<char>>([
+    let tokens = choice::<_, Simple<char>>((
+        just('=').then_ignore(just('=')).to(Token::Eq),
+        just('!').then_ignore(just('=')).to(Token::Neq),
+        just('<').then_ignore(just('=')).to(Token::Lte),
+        just('>').then_ignore(just('=')).to(Token::Gte),
+        just('&').then_ignore(just('&')).to(Token::And),
+        just('|').then_ignore(just('|')).to(Token::Or),
+        just('<').then_ignore(just('<')).to(Token::BitLShift),
+        just('>').then_ignore(just('>')).to(Token::BitRShift),
+        just('-').then_ignore(just('>')).to(Token::Arrow),
+        just('.').then_ignore(just('.')).to(Token::To),
+    ))
+    .or(choice::<_, Simple<char>>([
         just('(').to(Token::LParen),
         just(')').to(Token::RParen),
         just('{').to(Token::LBrace),
@@ -74,7 +93,7 @@ pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just(':').to(Token::Colon),
         just('\\').to(Token::Backslash),
         just('_').to(Token::Underscore),
-    ])
+    ]))
     .or(choice::<_, Simple<char>>((
         text::keyword("if").to(Token::If),
         text::keyword("then").to(Token::Then),
@@ -83,15 +102,12 @@ pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         text::keyword("while").to(Token::While),
         text::keyword("fn").to(Token::Fn),
         text::keyword("let").to(Token::Let),
-        just('=').then_ignore(just('=')).to(Token::Eq),
-        just('!').then_ignore(just('=')).to(Token::Neq),
-        just('<').then_ignore(just('=')).to(Token::Lte),
-        just('>').then_ignore(just('=')).to(Token::Gte),
-        just('&').then_ignore(just('&')).to(Token::And),
-        just('|').then_ignore(just('|')).to(Token::Or),
-        just('<').then_ignore(just('<')).to(Token::BitLShift),
-        just('>').then_ignore(just('>')).to(Token::BitRShift),
-        just('-').then_ignore(just('>')).to(Token::Arrow),
+        text::keyword("return").to(Token::Return),
+        text::keyword("match").to(Token::Match),
+        text::keyword("in").to(Token::In),
+        text::keyword("break").to(Token::Break),
+        text::keyword("continue").to(Token::Continue),
+        text::keyword("as").to(Token::As),
         text::int(10).from_str::<u64>().unwrapped().map(Token::Int),
         text::ident().map(Token::Ident),
     )))
