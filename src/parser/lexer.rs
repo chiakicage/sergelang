@@ -18,6 +18,7 @@ pub enum Token<'src> {
     Break,
     Continue,
     Match,
+    Import,
     In,
     To,
     As,
@@ -117,6 +118,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         text::keyword("break").to(Token::Break),
         text::keyword("continue").to(Token::Continue),
         text::keyword("as").to(Token::As),
+        text::keyword("import").to(Token::Import),
     ));
     let num = text::int::<&'src str, char, Error<'src, char>>(10)
         .from_str::<i32>()

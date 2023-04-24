@@ -4,15 +4,11 @@ use crate::parser::lexer::{Span, Spanned};
 pub struct Module<'src> {
     pub func_decls: Vec<Spanned<FuncDecl<'src>>>,
 }
-// #[derive(Debug)]
-// pub struct VarDecl<'src> {
-//     pub name: &'src str,
-//     pub rhs: Box<Expr<'src>>,
-// }
 #[derive(Debug)]
 pub struct FuncDecl<'src> {
-    pub name: &'src str,
-    pub args: Vec<&'src str>,
+    pub name: Spanned<&'src str>,
+    pub args: Vec<(Spanned<&'src str>, Spanned<&'src str>)>,
+    pub return_ty: Spanned<&'src str>,
     pub body: Box<Spanned<Block<'src>>>,
 }
 #[derive(Debug)]
@@ -24,7 +20,8 @@ pub struct Block<'src> {
 #[derive(Debug)]
 pub enum Stmt<'src> {
     Let {
-        name: &'src str,
+        name: Spanned<&'src str>,
+        ty: Spanned<&'src str>,
         rhs: Box<Spanned<Expr<'src>>>,
     },
     While {
@@ -32,7 +29,7 @@ pub enum Stmt<'src> {
         body: Box<Spanned<Block<'src>>>,
     },
     For {
-        var: &'src str,
+        var: Spanned<&'src str>,
         start: Box<Spanned<Expr<'src>>>,
         end: Box<Spanned<Expr<'src>>>,
         body: Box<Spanned<Block<'src>>>,
@@ -41,7 +38,7 @@ pub enum Stmt<'src> {
     Break,
     Continue,
     Assign {
-        name: &'src str,
+        name: Spanned<&'src str>,
         rhs: Box<Spanned<Expr<'src>>>,
     },
     Expr(Box<Spanned<Expr<'src>>>),
@@ -71,7 +68,7 @@ pub enum UnOp {
 #[derive(Debug)]
 pub enum Expr<'src> {
     Lit(Literal<'src>),
-    Var(&'src str),
+    Var(Spanned<&'src str>),
 
     BinOpExpr {
         lhs: Box<Spanned<Expr<'src>>>,
@@ -89,9 +86,9 @@ pub enum Expr<'src> {
         els: Option<Box<Spanned<Block<'src>>>>,
     },
 
-    Call(&'src str, Vec<Spanned<Expr<'src>>>),
+    Call(Spanned<&'src str>, Vec<Spanned<Expr<'src>>>),
 
-    Bracket(Box<Spanned<Block<'src>>>),
+    Block(Box<Spanned<Block<'src>>>),
 }
 
 #[derive(Debug, Clone)]

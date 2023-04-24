@@ -22,11 +22,10 @@ pub fn parser<'tokens, 'src: 'tokens>(
     .labelled("literal");
 
     let ident = select! {
-        Token::Ident(s) => s
+        Token::Ident(s) = span => (s, span)
     }
     .labelled("ident");
 
-    let ident_with_span = ident.map_with_span(|token, span: Span| (token, span));
 
     let var = ident
         .map_with_span(|s, span| (Expr::Var(s), span))
@@ -40,7 +39,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>();
 
-                let call = ident_with_span
+                let call = ident
                     .then(
                         items
                             .clone()
@@ -49,7 +48,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     )
                     .map(|(f, args)| {
                         let span = (f.1.start..args.1.end).into();
-                        (Expr::Call(f.0, args.0), span)
+                        (Expr::Call(f, args.0), span)
                     });
                 let term = call.or(lit).or(var);
                 let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
@@ -171,18 +170,21 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     });
                 comparison.or(sum).or(r#if).or(block
                     .clone()
-                    .map(|(x, span)| (Expr::Bracket(Box::new((x, span))), span)))
+                    .map(|(x, span)| (Expr::Block(Box::new((x, span))), span)))
             });
             let stmt_let = just_span(Token::Let)
+                .then(ident)
+                .then_ignore(just(Token::Colon))
                 .then(ident)
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
                 .then(just_span(Token::Semicolon))
-                .map(|(((begin, name), rhs), end)| {
+                .map(|((((begin, name), ty), rhs), end)| {
                     let span = (begin.start..end.end).into();
                     (
                         Stmt::Let {
                             name,
+                            ty,
                             rhs: Box::new(rhs),
                         },
                         span,
@@ -241,7 +243,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 .then(just_span(Token::Semicolon))
                 .map(|(begin, end)| (Stmt::Continue, (begin.start..end.end).into()));
 
-            let stmt_assign = ident_with_span
+            let stmt_assign = ident
                 .clone()
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
@@ -249,7 +251,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     let span = (name.1.start..rhs.1.end).into();
                     (
                         Stmt::Assign {
-                            name: name.0,
+                            name,
                             rhs: Box::new(rhs),
                         },
                         span,
@@ -297,22 +299,26 @@ pub fn parser<'tokens, 'src: 'tokens>(
         },
     );
 
-    let r#fn = just(Token::Fn)
-        .map_with_span(|token, span: Span| (token, span))
+    let r#fn = just_span(Token::Fn)
         .then(ident)
         .then(
             ident
+                .then_ignore(just(Token::Colon))
+                .then(ident)
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
+        .then_ignore(just(Token::Arrow))
+        .then(ident)
         .then(block.clone())
-        .map(|(((key, name), args), body)| {
-            let span = (key.1.start..body.1.end).into();
+        .map(|((((begin, name), args), return_ty), body)| {
+            let span = (begin.start..body.1.end).into();
             (
                 FuncDecl {
                     name,
                     args,
+                    return_ty,
                     body: Box::new(body),
                 },
                 span,
