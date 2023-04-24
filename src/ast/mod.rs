@@ -1,48 +1,50 @@
-#[derive(Debug, Clone)]
-pub struct Module {
-    pub func_decls: Vec<FuncDecl>,
+use crate::parser::lexer::{Span, Spanned};
+
+#[derive(Debug)]
+pub struct Module<'src> {
+    pub func_decls: Vec<Spanned<FuncDecl<'src>>>,
 }
-#[derive(Debug, Clone)]
-pub struct VarDecl {
-    pub name: String,
-    pub rhs: Box<Expr>,
+// #[derive(Debug)]
+// pub struct VarDecl<'src> {
+//     pub name: &'src str,
+//     pub rhs: Box<Expr<'src>>,
+// }
+#[derive(Debug)]
+pub struct FuncDecl<'src> {
+    pub name: &'src str,
+    pub args: Vec<&'src str>,
+    pub body: Box<Spanned<Block<'src>>>,
 }
-#[derive(Debug, Clone)]
-pub struct FuncDecl {
-    pub name: String,
-    pub args: Vec<String>,
-    pub body: Box<Block>,
-}
-#[derive(Debug, Clone)]
-pub struct Block {
-    pub stmts: Option<Vec<Stmt>>,
-    pub return_value: Option<Expr>,
+#[derive(Debug)]
+pub struct Block<'src> {
+    pub stmts: Option<Vec<Spanned<Stmt<'src>>>>,
+    pub return_value: Option<Spanned<Expr<'src>>>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Stmt {
+#[derive(Debug)]
+pub enum Stmt<'src> {
     Let {
-        name: String,
-        rhs: Box<Expr>,
+        name: &'src str,
+        rhs: Box<Spanned<Expr<'src>>>,
     },
     While {
-        cond: Box<Expr>,
-        body: Box<Block>,
+        cond: Box<Spanned<Expr<'src>>>,
+        body: Box<Spanned<Block<'src>>>,
     },
     For {
-        var: String,
-        start: Box<Expr>,
-        end: Box<Expr>,
-        body: Box<Block>,
+        var: &'src str,
+        start: Box<Spanned<Expr<'src>>>,
+        end: Box<Spanned<Expr<'src>>>,
+        body: Box<Spanned<Block<'src>>>,
     },
-    Return(Option<Box<Expr>>),
+    Return(Option<Box<Spanned<Expr<'src>>>>),
     Break,
     Continue,
     Assign {
-        name: String,
-        rhs: Box<Expr>,
+        name: &'src str,
+        rhs: Box<Spanned<Expr<'src>>>,
     },
-    Expr(Box<Expr>),
+    Expr(Box<Spanned<Expr<'src>>>),
 }
 
 #[derive(Debug, Clone)]
@@ -66,36 +68,37 @@ pub enum UnOp {
     BitNot,
 }
 
-#[derive(Debug, Clone)]
-pub enum Expr {
-    Num(f64),
-    Var(String),
+#[derive(Debug)]
+pub enum Expr<'src> {
+    Lit(Literal<'src>),
+    Var(&'src str),
 
     BinOpExpr {
-        lhs: Box<Expr>,
+        lhs: Box<Spanned<Expr<'src>>>,
         op: BinOp,
-        rhs: Box<Expr>,
+        rhs: Box<Spanned<Expr<'src>>>,
     },
     UnOpExpr {
         op: UnOp,
-        rhs: Box<Expr>,
+        rhs: Box<Spanned<Expr<'src>>>,
     },
 
     If {
-        cond: Box<Expr>,
-        then: Box<Block>,
-        els: Option<Box<Block>>,
+        cond: Box<Spanned<Expr<'src>>>,
+        then: Box<Spanned<Block<'src>>>,
+        els: Option<Box<Spanned<Block<'src>>>>,
     },
 
-    Call(String, Vec<Expr>),
+    Call(&'src str, Vec<Spanned<Expr<'src>>>),
 
-    Braket(Box<Block>),
+    Bracket(Box<Spanned<Block<'src>>>),
 }
 
-pub enum Literal {
+#[derive(Debug, Clone)]
+pub enum Literal<'src> {
     Int(i32),
     Float(f64),
-    Str(String),
+    Str(&'src str),
     Bool(bool),
     Char(char),
     Unit,

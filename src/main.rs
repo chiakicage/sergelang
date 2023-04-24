@@ -5,8 +5,8 @@ mod ast;
 mod parser;
 
 use ast::*;
-use parser::lexer::lexer;
-// use parser::parser;
+use parser::lexer::{lexer, Span};
+use parser::parser;
 
 // use rpds::HashTrieMap;
 
@@ -17,7 +17,6 @@ use parser::lexer::lexer;
 //     args: &'a Vec<String>,
 //     body: &'a Expr,
 // }
-
 
 // type SymTable<K, V> = HashTrieMap<K, V>;
 
@@ -101,9 +100,23 @@ fn main() {
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
     println!("{:?}", tokens);
-    println!("{:?}", errs);
-    // let result = parser().parse(result).unwrap();
-    // println!("{:#?}", result);
+    if let Some(tokens) = &tokens {
+        let (ast, parse_errs) = parser()
+            .parse(
+                tokens
+                    .as_slice()
+                    .spanned(Span::new(src.len(), src.len()))
+                    .into(),
+            )
+            .into_output_errors();
+        if let Some(ast) = ast {
+            println!("{:#?}", ast);
+        } else {
+            println!("{:?}", parse_errs);
+        }
+    } else {
+        println!("{:?}", errs);
+    }
     // match parser().parse(result) {
     //     Ok(ast) => {
     //         println!("{:#?}", ast);

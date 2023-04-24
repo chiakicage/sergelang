@@ -57,7 +57,7 @@ pub enum Token<'src> {
     Arrow,
     Backslash,
     Underscore,
-    Int(u64),
+    Int(i32),
     Str(&'src str),
     Ident(&'src str),
 }
@@ -118,22 +118,28 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         text::keyword("continue").to(Token::Continue),
         text::keyword("as").to(Token::As),
     ));
-    let num = text::int::<&'src str, char, Error<'src, char>>(10).from_str::<u64>().unwrapped().map(Token::Int);
+    let num = text::int::<&'src str, char, Error<'src, char>>(10)
+        .from_str::<i32>()
+        .unwrapped()
+        .map(Token::Int);
+    let r#str = just('"')
+        .ignore_then(none_of('"').repeated())
+        .then_ignore(just('"'))
+        .map_slice(Token::Str);
 
     let ident = text::ident::<&'src str, char, Error<'src, char>>().map(Token::Ident);
 
-    let token = num.or(op).or(keyword).or(ident);
+    let token = num.or(op).or(keyword).or(ident).or(r#str);
 
     let comment = just::<_, &str, Error<'src, char>>("//")
         .then(none_of("\n").repeated())
-        
         .padded();
 
     token
         .map_with_span(|tok, span| (tok, span))
         .padded_by(comment.repeated())
         .padded()
-        // .recover_with(skip_then_retry_until(any().ignored(), end()))
+        .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .collect::<Vec<Spanned<Token>>>()
 }

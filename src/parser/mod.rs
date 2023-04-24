@@ -1,236 +1,327 @@
 pub mod lexer;
 
 use crate::ast::*;
-use chumsky::{input::SpannedInput, prelude::*};
-use lexer::{Error, Span, Token, Spanned};
-
-
+use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
+use lexer::{Error, Span, Spanned, Token};
 
 type ParserInput<'tokens, 'src> = SpannedInput<Token<'src>, Span, &'tokens [Spanned<Token<'src>>]>;
 
-// pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
-//     'tokens,
-//     ParserInput<'tokens, 'src>,
-//     Module,
-//     Error<'tokens, Token>,
-// > + Clone {
-//     let int =
-//         filter(|t: &Token| if let Token::Int(_) = t { true } else { false }).map(|t| match t {
-//             Token::Int(x) => Expr::Num(x as f64),
-//             _ => unreachable!(),
-//         });
+fn just_span<'tokens, 'src: 'tokens>(
+    x: Token<'src>,
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Span, Error<'tokens, Token<'src>>> + Clone {
+    just(x).map_with_span(|_, span: Span| span)
+}
 
-//     let ident =
-//         filter(|t: &Token| if let Token::Ident(_) = t { true } else { false }).map(|t| match t {
-//             Token::Ident(x) => x,
-//             _ => unreachable!(),
-//         });
+pub fn parser<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Module<'src>, Error<'tokens, Token<'src>>> + Clone
+{
+    let lit = select! {
+        Token::Int(x) = span => (Expr::Lit(Literal::Int(x)), span),
+        // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).spanned(span)
+    }
+    .labelled("literal");
 
-//     let block = recursive(|block| {
-//         let expr = recursive(|expr| {
-//             let call = ident
-//                 .then(
-//                     expr.clone()
-//                         .separated_by(just(Token::Comma))
-//                         .delimited_by(just(Token::LParen), just(Token::RParen)),
-//                 )
-//                 .map(|(f, args)| Expr::Call(f, args));
+    let ident = select! {
+        Token::Ident(s) => s
+    }
+    .labelled("ident");
 
-//             let term = int
-//                 .or(expr
-//                     .clone()
-//                     .delimited_by(just(Token::LParen), just(Token::RParen)))
-//                 .or(call)
-//                 .or(ident.map(Expr::Var));
+    let ident_with_span = ident.map_with_span(|token, span: Span| (token, span));
 
-//             let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
-//                 .repeated()
-//                 .then(term)
-//                 .foldr(|_op, rhs| Expr::UnOpExpr {
-//                     op: match _op {
-//                         Token::Minus => UnOp::Neg,
-//                         Token::Not => UnOp::Not,
-//                         Token::BitNot => UnOp::BitNot,
-//                         _ => unreachable!(),
-//                     },
-//                     rhs: Box::new(rhs),
-//                 });
+    let var = ident
+        .map_with_span(|s, span| (Expr::Var(s), span))
+        .labelled("var");
 
-//             let product = unary
-//                 .clone()
-//                 .then(
-//                     choice((just(Token::Mul), just(Token::Div), just(Token::Mod)))
-//                         .then(unary.clone())
-//                         .repeated(),
-//                 )
-//                 .foldl(|lhs, (op, rhs)| Expr::BinOpExpr {
-//                     lhs: Box::new(lhs),
-//                     op: match op {
-//                         Token::Mul => BinOp::Mul,
-//                         Token::Div => BinOp::Div,
-//                         Token::Mod => BinOp::Mod,
-//                         _ => unreachable!(),
-//                     },
-//                     rhs: Box::new(rhs),
-//                 });
+    let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
+        |block: Recursive<Direct<_, Spanned<Block>, _>>| {
+            let expr = recursive(|expr| {
+                let items = expr
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>();
 
-//             let sum = product
-//                 .clone()
-//                 .then(
-//                     choice((just(Token::Plus), just(Token::Minus)))
-//                         .then(product.clone())
-//                         .repeated(),
-//                 )
-//                 .foldl(|lhs, (op, rhs)| Expr::BinOpExpr {
-//                     lhs: Box::new(lhs),
-//                     op: match op {
-//                         Token::Plus => BinOp::Add,
-//                         Token::Minus => BinOp::Sub,
-//                         _ => unreachable!(),
-//                     },
-//                     rhs: Box::new(rhs),
-//                 });
+                let call = ident_with_span
+                    .then(
+                        items
+                            .clone()
+                            .delimited_by(just(Token::LParen), just(Token::RParen))
+                            .map_with_span(|args, span: Span| (args, span)),
+                    )
+                    .map(|(f, args)| {
+                        let span = (f.1.start..args.1.end).into();
+                        (Expr::Call(f.0, args.0), span)
+                    });
+                let term = call.or(lit).or(var);
+                let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
+                    .map_with_span(|token, span: Span| (token, span))
+                    .repeated()
+                    .foldr(term, |op, rhs: Spanned<Expr>| {
+                        let span = (op.1.start..rhs.1.end).into();
+                        (
+                            Expr::UnOpExpr {
+                                op: match op.0 {
+                                    Token::Minus => UnOp::Neg,
+                                    Token::Not => UnOp::Not,
+                                    Token::BitNot => UnOp::BitNot,
+                                    _ => unreachable!(),
+                                },
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    });
+                let product = unary.clone().foldl(
+                    choice((just(Token::Mul), just(Token::Div), just(Token::Mod)))
+                        .then(unary.clone())
+                        .repeated(),
+                    |lhs, (op, rhs)| {
+                        let span = (lhs.1.start..rhs.1.end).into();
+                        (
+                            Expr::BinOpExpr {
+                                lhs: Box::new(lhs),
+                                op: match op {
+                                    Token::Mul => BinOp::Mul,
+                                    Token::Div => BinOp::Div,
+                                    Token::Mod => BinOp::Mod,
+                                    _ => unreachable!(),
+                                },
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    },
+                );
+                let sum = product.clone().foldl(
+                    choice((just(Token::Plus), just(Token::Minus), just(Token::Mod)))
+                        .then(product.clone())
+                        .repeated(),
+                    |lhs, (op, rhs)| {
+                        let span = (lhs.1.start..rhs.1.end).into();
+                        (
+                            Expr::BinOpExpr {
+                                lhs: Box::new(lhs),
+                                op: match op {
+                                    Token::Plus => BinOp::Add,
+                                    Token::Minus => BinOp::Sub,
+                                    _ => unreachable!(),
+                                },
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    },
+                );
+                let comparison = sum.clone().foldl(
+                    choice((
+                        just(Token::Eq),
+                        just(Token::Neq),
+                        just(Token::Lt),
+                        just(Token::Gt),
+                        just(Token::Lte),
+                        just(Token::Gte),
+                    ))
+                    .then(sum.clone())
+                    .repeated(),
+                    |lhs, (op, rhs)| {
+                        let span = (lhs.1.start..rhs.1.end).into();
+                        (
+                            Expr::BinOpExpr {
+                                lhs: Box::new(lhs),
+                                op: match op {
+                                    Token::Eq => BinOp::Eq,
+                                    Token::Neq => BinOp::Neq,
+                                    Token::Lt => BinOp::Lt,
+                                    Token::Gt => BinOp::Gt,
+                                    Token::Lte => BinOp::Lte,
+                                    Token::Gte => BinOp::Gte,
+                                    _ => unreachable!(),
+                                },
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    },
+                );
+                let r#if = just_span(Token::If)
+                    .then(expr.clone())
+                    .then(block.clone())
+                    .then(just(Token::Else).ignore_then(block.clone()).or_not())
+                    .map(|(((begin, cond), then), els)| {
+                        if let Some(els) = els {
+                            let span = (begin.start..els.1.end).into();
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: Some(Box::new(els)),
+                                },
+                                span,
+                            )
+                        } else {
+                            let span = (begin.start..then.1.end).into();
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: None,
+                                },
+                                span,
+                            )
+                        }
+                    });
+                comparison.or(sum).or(r#if).or(block
+                    .clone()
+                    .map(|(x, span)| (Expr::Bracket(Box::new((x, span))), span)))
+            });
+            let stmt_let = just_span(Token::Let)
+                .then(ident)
+                .then_ignore(just(Token::Assign))
+                .then(expr.clone())
+                .then(just_span(Token::Semicolon))
+                .map(|(((begin, name), rhs), end)| {
+                    let span = (begin.start..end.end).into();
+                    (
+                        Stmt::Let {
+                            name,
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    )
+                });
 
-//             let comparison = sum
-//                 .clone()
-//                 .then(choice((
-//                     just(Token::Eq),
-//                     just(Token::Neq),
-//                     just(Token::Lt),
-//                     just(Token::Gt),
-//                     just(Token::Lte),
-//                     just(Token::Gte),
-//                 )))
-//                 .then(sum.clone())
-//                 .map(|((lhs, op), rhs)| Expr::BinOpExpr {
-//                     lhs: Box::new(lhs),
-//                     op: match op {
-//                         Token::Eq => BinOp::Eq,
-//                         Token::Neq => BinOp::Neq,
-//                         Token::Lt => BinOp::Lt,
-//                         Token::Gt => BinOp::Gt,
-//                         Token::Lte => BinOp::Lte,
-//                         Token::Gte => BinOp::Gte,
-//                         _ => unreachable!(),
-//                     },
-//                     rhs: Box::new(rhs),
-//                 });
+            let stmt_return = just_span(Token::Return)
+                .then(expr.clone().or_not())
+                .then(just_span(Token::Semicolon))
+                .map(|((begin, value), end)| {
+                    let span = (begin.start..end.end).into();
+                    if let Some(e) = value {
+                        (Stmt::Return(Some(Box::new(e))), span)
+                    } else {
+                        (Stmt::Return(None), span)
+                    }
+                });
+            let stmt_while = just_span(Token::While)
+                .then(expr.clone())
+                .then(block.clone())
+                .map(|((begin, cond), body)| {
+                    let span = (begin.start..body.1.end).into();
+                    (
+                        Stmt::While {
+                            cond: Box::new(cond),
+                            body: Box::new(body),
+                        },
+                        span,
+                    )
+                });
 
-//             let r#if = just::<_, _, Simple<Token>>(Token::If)
-//                 .ignore_then(expr.clone())
-//                 .then(block.clone())
-//                 .then(just(Token::Else).ignore_then(block.clone()).or_not())
-//                 .map(|((cond, then), els)| Expr::If {
-//                     cond: Box::new(cond),
-//                     then: Box::new(then),
-//                     els: match els {
-//                         Some(x) => Some(Box::new(x)),
-//                         None => None,
-//                     },
-//                 });
-//             comparison
-//                 .or(sum)
-//                 .or(r#if)
-//                 .or(block.clone().map(|x| Expr::Braket(Box::new(x))))
-//         });
+            let stmt_for = just_span(Token::For)
+                .then(ident)
+                .then_ignore(just(Token::In))
+                .then(expr.clone())
+                .then_ignore(just(Token::To))
+                .then(expr.clone())
+                .then(block.clone())
+                .map(|((((begin, var), start), end), body)| {
+                    let span = (begin.start..body.1.end).into();
+                    (
+                        Stmt::For {
+                            var,
+                            start: Box::new(start),
+                            end: Box::new(end),
+                            body: Box::new(body),
+                        },
+                        span,
+                    )
+                });
+            let stmt_break = just_span(Token::Break)
+                .then(just_span(Token::Semicolon))
+                .map(|(begin, end)| (Stmt::Break, (begin.start..end.end).into()));
 
-//         let stmt_let = just::<_, _, Simple<Token>>(Token::Let)
-//             .ignore_then(ident)
-//             .then_ignore(just(Token::Assign))
-//             .then(expr.clone())
-//             .then_ignore(just(Token::Semicolon))
-//             .map(|(name, rhs)| Stmt::Let {
-//                 name,
-//                 rhs: Box::new(rhs),
-//             });
+            let stmt_continue = just_span(Token::Continue)
+                .then(just_span(Token::Semicolon))
+                .map(|(begin, end)| (Stmt::Continue, (begin.start..end.end).into()));
 
-//         let stmt_return = just::<_, _, Simple<Token>>(Token::Return)
-//             .ignore_then(expr.clone().or_not())
-//             .then_ignore(just(Token::Semicolon))
-//             .map(|x| {
-//                 if let Some(e) = x {
-//                     Stmt::Return(Some(Box::new(e)))
-//                 } else {
-//                     Stmt::Return(None)
-//                 }
-//             });
-//         let stmt_while = just::<_, _, Simple<Token>>(Token::While)
-//             .ignore_then(expr.clone())
-//             .then(block.clone())
-//             .map(|(cond, body)| Stmt::While {
-//                 cond: Box::new(cond),
-//                 body: Box::new(body),
-//             });
+            let stmt_assign = ident_with_span
+                .clone()
+                .then_ignore(just(Token::Assign))
+                .then(expr.clone())
+                .map(|(name, rhs)| {
+                    let span = (name.1.start..rhs.1.end).into();
+                    (
+                        Stmt::Assign {
+                            name: name.0,
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    )
+                });
+            let stmt_expr = expr
+                .clone()
+                .then(just_span(Token::Semicolon))
+                .map(|(x, end)| {
+                    let span = (x.1.start..end.end).into();
+                    (Stmt::Expr(Box::new(x)), span)
+                });
 
-//         let stmt_for = just::<_, _, Simple<Token>>(Token::For)
-//             .ignore_then(ident)
-//             .then_ignore(just(Token::In))
-//             .then(expr.clone())
-//             .then_ignore(just(Token::To))
-//             .then(expr.clone())
-//             .then(block.clone())
-//             .map(|(((var, start), end), body)| Stmt::For {
-//                 var,
-//                 start: Box::new(start),
-//                 end: Box::new(end),
-//                 body: Box::new(body),
-//             });
-//         let stmt_break = just::<_, _, Simple<Token>>(Token::Break)
-//             .then_ignore(just(Token::Semicolon))
-//             .to(Stmt::Break);
-//         let stmt_continue = just::<_, _, Simple<Token>>(Token::Continue)
-//             .then_ignore(just(Token::Semicolon))
-//             .to(Stmt::Continue);
-//         let stmt_assign = ident
-//             .clone()
-//             .then_ignore(just::<_, _, Simple<Token>>(Token::Assign))
-//             .then(expr.clone())
-//             .map(|(name, rhs)| Stmt::Assign {
-//                 name,
-//                 rhs: Box::new(rhs),
-//             });
-//         let stmt_expr = expr
-//             .clone()
-//             .then_ignore(just(Token::Semicolon))
-//             .map(|x| Stmt::Expr(Box::new(x)));
+            let stmt = choice((
+                stmt_let,
+                stmt_return,
+                stmt_while,
+                stmt_for,
+                stmt_break,
+                stmt_continue,
+                stmt_assign,
+                stmt_expr,
+            ));
 
-//         let stmt = choice::<_, Simple<Token>>((
-//             stmt_let,
-//             stmt_return,
-//             stmt_while,
-//             stmt_for,
-//             stmt_break,
-//             stmt_continue,
-//             stmt_assign,
-//             stmt_expr,
-//         ));
+            just_span(Token::LBrace)
+                .then(
+                    stmt.clone()
+                        .repeated()
+                        .at_least(1)
+                        .collect::<Vec<_>>()
+                        .or_not()
+                        .then(expr.clone().or_not()),
+                )
+                .then(just_span(Token::RBrace))
+                .map(|((begin, (stmts, value)), end)| {
+                    let span = (begin.start..end.end).into();
+                    (
+                        Block {
+                            stmts,
+                            return_value: value,
+                        },
+                        span
+                    )
+                })
+        },
+    );
 
-//         stmt.clone()
-//             .repeated()
-//             .at_least(1)
-//             .or_not()
-//             .then(expr.clone().or_not())
-//             .delimited_by(just(Token::LBrace), just(Token::RBrace))
-//             .map(|(stmts, value)| Block {
-//                 stmts,
-//                 return_value: value,
-//             })
-//     });
-//     let r#fn = just(Token::Fn)
-//         .ignore_then(ident)
-//         .then(
-//             ident
-//                 .separated_by(just(Token::Comma))
-//                 .delimited_by(just(Token::LParen), just(Token::RParen)),
-//         )
-//         .then(block.clone())
-//         .map(|((name, args), body)| FuncDecl {
-//             name,
-//             args,
-//             body: Box::new(body),
-//         });
-//     let module = r#fn.repeated().map(|defs| Module { func_decls: defs });
+    let r#fn = just(Token::Fn)
+        .map_with_span(|token, span: Span| (token, span))
+        .then(ident)
+        .then(
+            ident
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .then(block.clone())
+        .map(|(((key, name), args), body)| {
+            let span = (key.1.start..body.1.end).into();
+            (
+                FuncDecl {
+                    name,
+                    args,
+                    body: Box::new(body),
+                },
+                span,
+            )
+        });
+    let module = r#fn
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|defs| Module { func_decls: defs });
 
-//     // stmt.then_ignore(end())
-//     module.then_ignore(end())
-// }
+    module.then_ignore(end())
+}
