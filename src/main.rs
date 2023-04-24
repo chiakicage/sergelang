@@ -6,7 +6,7 @@ mod parser;
 
 use ast::*;
 use parser::lexer::lexer;
-use parser::parser;
+// use parser::parser;
 
 // use rpds::HashTrieMap;
 
@@ -98,11 +98,12 @@ use parser::parser;
 fn main() {
     let src = std::fs::read_to_string(std::env::args().nth(1).unwrap()).unwrap();
 
-    // use Token::*;
-    let result = lexer().parse(src).unwrap();
-    println!("{:#?}", result);
-    let result = parser().parse(result).unwrap();
-    println!("{:#?}", result);
+    println!("{:#?}", src);
+    let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
+    println!("{:?}", tokens);
+    println!("{:?}", errs);
+    // let result = parser().parse(result).unwrap();
+    // println!("{:#?}", result);
     // match parser().parse(result) {
     //     Ok(ast) => {
     //         println!("{:#?}", ast);
@@ -119,5 +120,4 @@ fn main() {
     //         .into_iter()
     //         .for_each(|e| println!("Parse error: {:?}", e)),
     // }
-    
 }

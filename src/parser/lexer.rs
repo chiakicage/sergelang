@@ -1,9 +1,14 @@
 use chumsky::prelude::*;
+use std::fmt;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Token {
+pub type Span = SimpleSpan<usize>;
+pub type Error<'src, T> = extra::Err<Rich<'src, T, Span>>;
+
+pub type Spanned<T> = (T, Span);
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Token<'src> {
     If,
-    Then,
     Else,
     Let,
     For,
@@ -53,11 +58,12 @@ pub enum Token {
     Backslash,
     Underscore,
     Int(u64),
-    Ident(String),
+    Str(&'src str),
+    Ident(&'src str),
 }
 
-pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
-    let tokens = choice::<_, Simple<char>>((
+pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, Error<'src, char>> {
+    let op = choice([
         just('=').then_ignore(just('=')).to(Token::Eq),
         just('!').then_ignore(just('=')).to(Token::Neq),
         just('<').then_ignore(just('=')).to(Token::Lte),
@@ -68,8 +74,8 @@ pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('>').then_ignore(just('>')).to(Token::BitRShift),
         just('-').then_ignore(just('>')).to(Token::Arrow),
         just('.').then_ignore(just('.')).to(Token::To),
-    ))
-    .or(choice::<_, Simple<char>>([
+    ])
+    .or(choice([
         just('(').to(Token::LParen),
         just(')').to(Token::RParen),
         just('{').to(Token::LBrace),
@@ -97,10 +103,9 @@ pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just(':').to(Token::Colon),
         just('\\').to(Token::Backslash),
         just('_').to(Token::Underscore),
-    ]))
-    .or(choice::<_, Simple<char>>((
+    ]));
+    let keyword = choice((
         text::keyword("if").to(Token::If),
-        text::keyword("then").to(Token::Then),
         text::keyword("else").to(Token::Else),
         text::keyword("for").to(Token::For),
         text::keyword("while").to(Token::While),
@@ -112,10 +117,23 @@ pub fn lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         text::keyword("break").to(Token::Break),
         text::keyword("continue").to(Token::Continue),
         text::keyword("as").to(Token::As),
-        text::int(10).from_str::<u64>().unwrapped().map(Token::Int),
-        text::ident().map(Token::Ident),
-    )))
-    .padded()
-    .repeated();
-    tokens.then_ignore(end())
+    ));
+    let num = text::int::<&'src str, char, Error<'src, char>>(10).from_str::<u64>().unwrapped().map(Token::Int);
+
+    let ident = text::ident::<&'src str, char, Error<'src, char>>().map(Token::Ident);
+
+    let token = num.or(op).or(keyword).or(ident);
+
+    let comment = just::<_, &str, Error<'src, char>>("//")
+        .then(none_of("\n").repeated())
+        
+        .padded();
+
+    token
+        .map_with_span(|tok, span| (tok, span))
+        .padded_by(comment.repeated())
+        .padded()
+        // .recover_with(skip_then_retry_until(any().ignored(), end()))
+        .repeated()
+        .collect::<Vec<Spanned<Token>>>()
 }
