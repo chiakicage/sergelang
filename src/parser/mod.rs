@@ -1,6 +1,6 @@
 pub mod lexer;
 
-use crate::ast::*;
+use crate::ast::ast::*;
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
 use lexer::{Error, Span, Spanned, Token};
 
@@ -26,18 +26,33 @@ pub fn parser<'tokens, 'src: 'tokens>(
     }
     .labelled("ident");
 
-
     let var = ident
         .map_with_span(|s, span| (Expr::Var(s), span))
         .labelled("var");
 
+    // let ctor = ident.just()
+
     let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
             let expr = recursive(|expr| {
+                let tuple = just_span(Token::LParen)
+                    .then(
+                        expr.clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                    )
+                    .then(just_span(Token::RParen))
+                    .map(|((begin, args), end)| {
+                        let span: Span = (begin.start..end.end).into();
+                        (Expr::Tuple(args), span)
+                    });
+
                 let items = expr
                     .clone()
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>();
+
 
                 let call = ident
                     .then(
@@ -50,7 +65,16 @@ pub fn parser<'tokens, 'src: 'tokens>(
                         let span = (f.1.start..args.1.end).into();
                         (Expr::Call(f, args.0), span)
                     });
-                let term = call.or(lit).or(var);
+
+                let paren = just_span(Token::LParen)
+                    .then(expr.clone())
+                    .then(just_span(Token::RParen))
+                    .map(|((begin, exp), end)| {
+                        let span = (begin.start..end.end).into();
+                        (exp.0, span)
+                    });
+                
+                let term = call.or(lit).or(var).or(paren).or(tuple);
                 let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
                     .map_with_span(|token, span: Span| (token, span))
                     .repeated()
@@ -247,8 +271,9 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 .clone()
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
-                .map(|(name, rhs)| {
-                    let span = (name.1.start..rhs.1.end).into();
+                .then(just_span(Token::Semicolon))
+                .map(|((name, rhs), end)| {
+                    let span = (name.1.start..end.end).into();
                     (
                         Stmt::Assign {
                             name,
@@ -293,7 +318,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                             stmts,
                             return_value: value,
                         },
-                        span
+                        span,
                     )
                 })
         },
