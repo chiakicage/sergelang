@@ -6,12 +6,6 @@ use lexer::{Error, Span, Spanned, Token};
 
 type ParserInput<'tokens, 'src> = SpannedInput<Token<'src>, Span, &'tokens [Spanned<Token<'src>>]>;
 
-fn just_span<'tokens, 'src: 'tokens>(
-    x: Token<'src>,
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Span, Error<'tokens, Token<'src>>> + Clone {
-    just(x).map_with_span(|_, span: Span| span)
-}
-
 pub fn parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Module<'src>, Error<'tokens, Token<'src>>> + Clone
 {
@@ -30,50 +24,75 @@ pub fn parser<'tokens, 'src: 'tokens>(
         .map_with_span(|s, span| (Expr::Var(s), span))
         .labelled("var");
 
-    // let ctor = ident.just()
+    let typed_ctor = ident
+        .then_ignore(just(Token::Scope))
+        .then(ident)
+        .map_with_span(|(ty, ctor), span| (ty, ctor));
+
+    // let pattern = recursive(|pattern| {
+    //     let items = pattern
+    //         .clone()
+    //         .separated_by(just(Token::Comma))
+    //         .allow_trailing()
+    //         .collect::<Vec<_>>();
+
+    //     let tuple = items
+    //         .delimited_by(just(Token::LParen), just(Token::RParen))
+    //         .map_with_span(|args, span: Span| {
+    //             (Pattern::Tuple(args), span)
+    //         });
+
+    //     let nameless_ctor = typed_ctor
+    //         .then(
+    //             items
+    //                 .clone()
+    //                 .delimited_by(just(Token::LParen), just(Token::RParen))
+    //                 .map_with_span(|args, span| (args, span)),
+    //         )
+    //         .map_with_span(|((ty, ctor), args), span| (Pattern::Ctor(ty, ctor, args), span));
+
+    //     let lit = lit.map_with_span(|lit, span| (Pattern::Lit(lit), span));
+
+    //     let var = var.map_with_span(|var, span| (Pattern::Var(var), span));
+
+    //     let pattern = choice([tuple, ctor, lit, var]);
+
+    //     pattern
+    //         .clone()
+    //         .delimited_by(just(Token::LParen), just(Token::RParen))
+    //         .map_with_span(|pattern, span| (pattern, span))
+    //         .or(pattern)
+    // });
 
     let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
             let expr = recursive(|expr| {
-                let tuple = just_span(Token::LParen)
-                    .then(
-                        expr.clone()
-                        .separated_by(just(Token::Comma))
-                        .allow_trailing()
-                        .collect::<Vec<_>>()
-                    )
-                    .then(just_span(Token::RParen))
-                    .map(|((begin, args), end)| {
-                        let span: Span = (begin.start..end.end).into();
-                        (Expr::Tuple(args), span)
-                    });
+                let tuple = expr
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .map_with_span(|args, span| (Expr::Tuple(args), span));
 
                 let items = expr
                     .clone()
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>();
 
-
                 let call = ident
                     .then(
                         items
                             .clone()
-                            .delimited_by(just(Token::LParen), just(Token::RParen))
-                            .map_with_span(|args, span: Span| (args, span)),
+                            .delimited_by(just(Token::LParen), just(Token::RParen)),
                     )
-                    .map(|(f, args)| {
-                        let span = (f.1.start..args.1.end).into();
-                        (Expr::Call(f, args.0), span)
-                    });
+                    .map_with_span(|(f, args), span: Span| (Expr::Call(f, args), span));
 
-                let paren = just_span(Token::LParen)
-                    .then(expr.clone())
-                    .then(just_span(Token::RParen))
-                    .map(|((begin, exp), end)| {
-                        let span = (begin.start..end.end).into();
-                        (exp.0, span)
-                    });
-                
+                let paren = just(Token::LParen)
+                    .ignore_then(expr.clone())
+                    .then_ignore(just(Token::RParen))
+                    .map_with_span(|exp, span| (exp.0, span));
+
                 let term = call.or(lit).or(var).or(paren).or(tuple);
                 let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
                     .map_with_span(|token, span: Span| (token, span))
@@ -165,13 +184,12 @@ pub fn parser<'tokens, 'src: 'tokens>(
                         )
                     },
                 );
-                let r#if = just_span(Token::If)
-                    .then(expr.clone())
+                let r#if = just(Token::If)
+                    .ignore_then(expr.clone())
                     .then(block.clone())
                     .then(just(Token::Else).ignore_then(block.clone()).or_not())
-                    .map(|(((begin, cond), then), els)| {
+                    .map_with_span(|((cond, then), els), span: Span| {
                         if let Some(els) = els {
-                            let span = (begin.start..els.1.end).into();
                             (
                                 Expr::If {
                                     cond: Box::new(cond),
@@ -181,7 +199,6 @@ pub fn parser<'tokens, 'src: 'tokens>(
                                 span,
                             )
                         } else {
-                            let span = (begin.start..then.1.end).into();
                             (
                                 Expr::If {
                                     cond: Box::new(cond),
@@ -194,17 +211,16 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     });
                 comparison.or(sum).or(r#if).or(block
                     .clone()
-                    .map(|(x, span)| (Expr::Block(Box::new((x, span))), span)))
+                    .map_with_span(|x, span| (Expr::Block(Box::new(x)), span)))
             });
-            let stmt_let = just_span(Token::Let)
-                .then(ident)
+            let stmt_let = just(Token::Let)
+                .ignore_then(ident)
                 .then_ignore(just(Token::Colon))
                 .then(ident)
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
-                .then(just_span(Token::Semicolon))
-                .map(|((((begin, name), ty), rhs), end)| {
-                    let span = (begin.start..end.end).into();
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|((name, ty), rhs), span: Span| {
                     (
                         Stmt::Let {
                             name,
@@ -215,22 +231,20 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     )
                 });
 
-            let stmt_return = just_span(Token::Return)
-                .then(expr.clone().or_not())
-                .then(just_span(Token::Semicolon))
-                .map(|((begin, value), end)| {
-                    let span = (begin.start..end.end).into();
+            let stmt_return = just(Token::Return)
+                .ignore_then(expr.clone().or_not())
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|value, span| {
                     if let Some(e) = value {
                         (Stmt::Return(Some(Box::new(e))), span)
                     } else {
                         (Stmt::Return(None), span)
                     }
                 });
-            let stmt_while = just_span(Token::While)
-                .then(expr.clone())
+            let stmt_while = just(Token::While)
+                .ignore_then(expr.clone())
                 .then(block.clone())
-                .map(|((begin, cond), body)| {
-                    let span = (begin.start..body.1.end).into();
+                .map_with_span(|(cond, body), span: Span| {
                     (
                         Stmt::While {
                             cond: Box::new(cond),
@@ -240,15 +254,14 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     )
                 });
 
-            let stmt_for = just_span(Token::For)
-                .then(ident)
+            let stmt_for = just(Token::For)
+                .ignore_then(ident)
                 .then_ignore(just(Token::In))
                 .then(expr.clone())
                 .then_ignore(just(Token::To))
                 .then(expr.clone())
                 .then(block.clone())
-                .map(|((((begin, var), start), end), body)| {
-                    let span = (begin.start..body.1.end).into();
+                .map_with_span(|(((var, start), end), body), span: Span| {
                     (
                         Stmt::For {
                             var,
@@ -259,21 +272,20 @@ pub fn parser<'tokens, 'src: 'tokens>(
                         span,
                     )
                 });
-            let stmt_break = just_span(Token::Break)
-                .then(just_span(Token::Semicolon))
-                .map(|(begin, end)| (Stmt::Break, (begin.start..end.end).into()));
+            let stmt_break = just(Token::Break)
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|_tok, span: Span| (Stmt::Break, span));
 
-            let stmt_continue = just_span(Token::Continue)
-                .then(just_span(Token::Semicolon))
-                .map(|(begin, end)| (Stmt::Continue, (begin.start..end.end).into()));
+            let stmt_continue = just(Token::Continue)
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|_tok, span: Span| (Stmt::Continue, span));
 
             let stmt_assign = ident
                 .clone()
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
-                .then(just_span(Token::Semicolon))
-                .map(|((name, rhs), end)| {
-                    let span = (name.1.start..end.end).into();
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|(name, rhs), span: Span| {
                     (
                         Stmt::Assign {
                             name,
@@ -284,11 +296,8 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 });
             let stmt_expr = expr
                 .clone()
-                .then(just_span(Token::Semicolon))
-                .map(|(x, end)| {
-                    let span = (x.1.start..end.end).into();
-                    (Stmt::Expr(Box::new(x)), span)
-                });
+                .then_ignore(just(Token::Semicolon))
+                .map_with_span(|x, span| (Stmt::Expr(Box::new(x)), span));
 
             let stmt = choice((
                 stmt_let,
@@ -301,18 +310,14 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 stmt_expr,
             ));
 
-            just_span(Token::LBrace)
-                .then(
-                    stmt.clone()
-                        .repeated()
-                        .at_least(1)
-                        .collect::<Vec<_>>()
-                        .or_not()
-                        .then(expr.clone().or_not()),
-                )
-                .then(just_span(Token::RBrace))
-                .map(|((begin, (stmts, value)), end)| {
-                    let span = (begin.start..end.end).into();
+            stmt.clone()
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .or_not()
+                .then(expr.clone().or_not())
+                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .map_with_span(|(stmts, value), span| {
                     (
                         Block {
                             stmts,
@@ -324,8 +329,8 @@ pub fn parser<'tokens, 'src: 'tokens>(
         },
     );
 
-    let r#fn = just_span(Token::Fn)
-        .then(ident)
+    let r#fn = just(Token::Fn)
+        .ignore_then(ident)
         .then(
             ident
                 .then_ignore(just(Token::Colon))
@@ -337,8 +342,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
         .then_ignore(just(Token::Arrow))
         .then(ident)
         .then(block.clone())
-        .map(|((((begin, name), args), return_ty), body)| {
-            let span = (begin.start..body.1.end).into();
+        .map_with_span(|(((name, args), return_ty), body), span: Span| {
             (
                 FuncDecl {
                     name,
