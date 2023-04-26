@@ -1,15 +1,111 @@
-use crate::parser::lexer::{Span, Spanned};
+use crate::error::{Span, Spanned};
 
 #[derive(Debug)]
 pub struct Module<'src> {
-    pub func_decls: Vec<Spanned<FuncDecl<'src>>>,
+    pub decls: Vec<Spanned<Decl<'src>>>,
+}
+
+#[derive(Debug)]
+pub enum Fields<'src> {
+    NamelessFields(Vec<Spanned<&'src str>>),
+    NamedFields(Vec<(Spanned<&'src str>, Spanned<&'src str>)>),
 }
 #[derive(Debug)]
-pub struct FuncDecl<'src> {
+pub enum PatternFields<'src> {
+    NamelessFields(Vec<Spanned<Pattern<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Pattern<'src>>>)>),
+}
+#[derive(Debug)]
+pub enum ExprFields<'src> {
+    NamelessFields(Vec<Spanned<Expr<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Expr<'src>>>)>),
+}
+
+#[derive(Debug)]
+pub struct CtorDecl<'src> {
     pub name: Spanned<&'src str>,
-    pub args: Vec<(Spanned<&'src str>, Spanned<&'src str>)>,
-    pub return_ty: Spanned<&'src str>,
-    pub body: Box<Spanned<Block<'src>>>,
+    pub fields: Fields<'src>,
+}
+
+#[derive(Debug)]
+pub enum Decl<'src> {
+    FuncDecl {
+        name: Spanned<&'src str>,
+        args: Vec<(Spanned<&'src str>, Spanned<&'src str>)>,
+        return_ty: Spanned<&'src str>,
+        body: Box<Spanned<Block<'src>>>,
+    },
+    TypeDecl {
+        name: Spanned<&'src str>,
+        ctors: Vec<Spanned<CtorDecl<'src>>>,
+    },
+}
+
+#[derive(Debug)]
+pub enum Pattern<'src> {
+    Lit(Literal<'src>),
+    Var(Spanned<&'src str>),
+    Tuple(Vec<Spanned<Pattern<'src>>>),
+    Ctor {
+        ty_name: Spanned<&'src str>,
+        name: Spanned<&'src str>,
+        fields: PatternFields<'src>,
+    },
+}
+
+#[derive(Debug)]
+pub enum ArgsOrIndex<'src> {
+    Args(Vec<Spanned<Expr<'src>>>),
+    Index(Box<Spanned<Expr<'src>>>),
+}
+
+#[derive(Debug)]
+pub enum Expr<'src> {
+    Lit(Literal<'src>),
+    Var(Spanned<&'src str>),
+    Tuple(Vec<Spanned<Expr<'src>>>),
+
+    BinOpExpr {
+        lhs: Box<Spanned<Expr<'src>>>,
+        op: BinOp,
+        rhs: Box<Spanned<Expr<'src>>>,
+    },
+    UnOpExpr {
+        op: UnOp,
+        rhs: Box<Spanned<Expr<'src>>>,
+    },
+
+    If {
+        cond: Box<Spanned<Expr<'src>>>,
+        then: Box<Spanned<Block<'src>>>,
+        els: Option<Box<Spanned<Block<'src>>>>,
+    },
+
+    Call {
+        func: Box<Spanned<Expr<'src>>>,
+        args: Vec<Spanned<Expr<'src>>>,
+    },
+    Index {
+        array: Box<Spanned<Expr<'src>>>,
+        index: Box<Spanned<Expr<'src>>>,
+    },
+    Ctor {
+        ty_name: Spanned<&'src str>,
+        name: Spanned<&'src str>,
+        fields: ExprFields<'src>,
+    },
+
+    Block(Box<Spanned<Block<'src>>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Literal<'src> {
+    Int(i32),
+    Float(f64),
+    Str(&'src str),
+    Bool(bool),
+    Char(char),
+    Unit,
 }
 #[derive(Debug)]
 pub struct Block<'src> {
@@ -63,67 +159,4 @@ pub enum UnOp {
     Neg,
     Not,
     BitNot,
-}
-#[derive(Debug)]
-pub struct CtorDecl<'src> {
-    pub name: Spanned<&'src str>,
-    pub fields: Option<Vec<(Option<Spanned<&'src str>>, Spanned<&'src str>)>>,
-}
-#[derive(Debug)]
-pub struct TypeDecl<'src> {
-    pub name: Spanned<&'src str>,
-    pub ctors: Vec<Spanned<CtorDecl<'src>>>,
-}
-#[derive(Debug)]
-pub enum Pattern<'src> {
-    Lit(Literal<'src>),
-    Var(Spanned<&'src str>),
-    Tuple(Vec<Spanned<Pattern<'src>>>),
-    Ctor {
-        ty_name: Spanned<&'src str>,
-        name: Spanned<&'src str>,
-        fields: Vec<(Option<Spanned<&'src str>>, Spanned<Pattern<'src>>)>,
-	}
-}
-
-#[derive(Debug)]
-pub enum Expr<'src> {
-    Lit(Literal<'src>),
-    Var(Spanned<&'src str>),
-    Tuple(Vec<Spanned<Expr<'src>>>),
-
-    BinOpExpr {
-        lhs: Box<Spanned<Expr<'src>>>,
-        op: BinOp,
-        rhs: Box<Spanned<Expr<'src>>>,
-    },
-    UnOpExpr {
-        op: UnOp,
-        rhs: Box<Spanned<Expr<'src>>>,
-    },
-
-    If {
-        cond: Box<Spanned<Expr<'src>>>,
-        then: Box<Spanned<Block<'src>>>,
-        els: Option<Box<Spanned<Block<'src>>>>,
-    },
-
-    Call(Spanned<&'src str>, Vec<Spanned<Expr<'src>>>),
-    Ctor {
-		ty_name: Spanned<&'src str>,
-        name: Spanned<&'src str>,
-        fields: Vec<(Option<Spanned<&'src str>>, Spanned<Expr<'src>>)>,
-	},
-
-    Block(Box<Spanned<Block<'src>>>),
-}
-
-#[derive(Debug, Clone)]
-pub enum Literal<'src> {
-    Int(i32),
-    Float(f64),
-    Str(&'src str),
-    Bool(bool),
-    Char(char),
-    Unit,
 }

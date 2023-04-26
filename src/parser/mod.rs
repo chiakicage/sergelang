@@ -1,8 +1,9 @@
 pub mod lexer;
 
 use crate::ast::ast::*;
+use crate::error::{Error, Span, Spanned};
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
-use lexer::{Error, Span, Spanned, Token};
+use lexer::Token;
 
 type ParserInput<'tokens, 'src> = SpannedInput<Token<'src>, Span, &'tokens [Spanned<Token<'src>>]>;
 
@@ -10,8 +11,8 @@ pub fn parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Module<'src>, Error<'tokens, Token<'src>>> + Clone
 {
     let lit = select! {
-        Token::Int(x) = span => (Expr::Lit(Literal::Int(x)), span),
-        // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).spanned(span)
+        Token::Int(x) => Literal::Int(x),
+        // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).(span)
     }
     .labelled("literal");
 
@@ -21,13 +22,15 @@ pub fn parser<'tokens, 'src: 'tokens>(
     .labelled("ident");
 
     let var = ident
-        .map_with_span(|s, span| (Expr::Var(s), span))
+        .map_with_span(|s, span: Span| (Expr::Var(s), span))
         .labelled("var");
+
+    let lit = lit.map_with_span(|lit, span| (Expr::Lit(lit), span));
 
     let typed_ctor = ident
         .then_ignore(just(Token::Scope))
         .then(ident)
-        .map_with_span(|(ty, ctor), span| (ty, ctor));
+        .map(|(ty, ctor)| (ty, ctor));
 
     // let pattern = recursive(|pattern| {
     //     let items = pattern
@@ -38,62 +41,164 @@ pub fn parser<'tokens, 'src: 'tokens>(
 
     //     let tuple = items
     //         .delimited_by(just(Token::LParen), just(Token::RParen))
-    //         .map_with_span(|args, span: Span| {
-    //             (Pattern::Tuple(args), span)
-    //         });
+    //         .map_with_span(|args, span: Span| (Pattern::Tuple(args), span));
 
     //     let nameless_ctor = typed_ctor
     //         .then(
     //             items
     //                 .clone()
-    //                 .delimited_by(just(Token::LParen), just(Token::RParen))
-    //                 .map_with_span(|args, span| (args, span)),
+    //                 .delimited_by(just(Token::LParen), just(Token::RParen)),
     //         )
-    //         .map_with_span(|((ty, ctor), args), span| (Pattern::Ctor(ty, ctor, args), span));
+    //         .map_with_span(|((ty_name, name), fields), span| {
+    //             (
+    //                 Pattern::NamelessCtorPattern(NamelessCtorPattern {
+    //                     ty_name,
+    //                     name,
+    //                     fields
+    //                 }),
+    //                 span,
+    //             )
+    //         });
+
+    //     let named_fields = ident
+    //         .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
+    //         .separated_by(just(Token::Comma))
+    //         .allow_trailing()
+    //         .collect::<Vec<_>>();
+
+    //     let named_ctor = typed_ctor
+    //         .then(named_fields.delimited_by(just(Token::LBrace), just(Token::RBrace)))
+    //         .map_with_span(|((ty_name, name), fields), span| {
+    //             (
+    //                 Pattern::NamedCtorPattern(NamedCtorPattern {
+    //                     ty_name,
+    //                     name,
+    //                     fields
+    //                 }),
+    //                 span,
+    //             )
+    //         });
+
+    //     let ctor = nameless_ctor.or(named_ctor);
 
     //     let lit = lit.map_with_span(|lit, span| (Pattern::Lit(lit), span));
 
-    //     let var = var.map_with_span(|var, span| (Pattern::Var(var), span));
+    //     let var = ident.map_with_span(|var, span| (Pattern::Var(var), span));
 
-    //     let pattern = choice([tuple, ctor, lit, var]);
-
-    //     pattern
-    //         .clone()
-    //         .delimited_by(just(Token::LParen), just(Token::RParen))
-    //         .map_with_span(|pattern, span| (pattern, span))
-    //         .or(pattern)
+    //     choice((tuple, ctor, lit, var));
     // });
 
     let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
             let expr = recursive(|expr| {
+                let r#if = just(Token::If)
+                    .ignore_then(expr.clone())
+                    .then(block.clone())
+                    .then(just(Token::Else).ignore_then(block.clone()).or_not())
+                    .map_with_span(|((cond, then), els), span| {
+                        if let Some(els) = els {
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: Some(Box::new(els)),
+                                },
+                                span,
+                            )
+                        } else {
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: None,
+                                },
+                                span,
+                            )
+                        }
+                    });
+
+                let paren = expr
+                    .clone()
+                    .delimited_by(just(Token::LParen), just(Token::RParen));
+
                 let tuple = expr
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LParen), just(Token::RParen))
-                    .map_with_span(|args, span| (Expr::Tuple(args), span));
+                    .map_with_span(|args, span: Span| (Expr::Tuple(args), span));
 
                 let items = expr
                     .clone()
                     .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>();
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen));
 
-                let call = ident
-                    .then(
-                        items
-                            .clone()
-                            .delimited_by(just(Token::LParen), just(Token::RParen)),
-                    )
-                    .map_with_span(|(f, args), span: Span| (Expr::Call(f, args), span));
+                let expr_block = block
+                    .clone()
+                    .map_with_span(|x, span| (Expr::Block(Box::new(x)), span));
 
-                let paren = just(Token::LParen)
-                    .ignore_then(expr.clone())
-                    .then_ignore(just(Token::RParen))
-                    .map_with_span(|exp, span| (exp.0, span));
+                let callable = choice((var, paren.clone(), expr_block.clone(), r#if.clone()));
 
-                let term = call.or(lit).or(var).or(paren).or(tuple);
+                let index = expr
+                    .clone()
+                    .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                    .map(|exp| ArgsOrIndex::Index(Box::new(exp)));
+
+                let args = items.clone().map(|args| ArgsOrIndex::Args(args));
+
+                let call = callable.clone().foldl(
+                    args.or(index)
+                        .clone()
+                        .map_with_span(|x, span: Span| (x, span))
+                        .repeated()
+                        .at_least(1),
+                    |lhs, (argsorindex, span)| {
+                        let span = (lhs.1.start..span.end).into();
+                        (
+                            match argsorindex {
+                                ArgsOrIndex::Index(index) => Expr::Index {
+                                    array: Box::new(lhs),
+                                    index,
+                                },
+                                ArgsOrIndex::Args(args) => Expr::Call {
+                                    func: Box::new(lhs),
+                                    args,
+                                },
+                            },
+                            span,
+                        )
+                    },
+                );
+
+                let named_fields = ident
+                    .then(just(Token::Colon).ignore_then(expr.clone()).or_not())
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map(|fields| ExprFields::NamedFields(fields));
+                let nameless_fields = items.map(|fields| ExprFields::NamelessFields(fields));
+
+                let fields = named_fields.or(nameless_fields);
+
+                let ctor =
+                    typed_ctor
+                        .then(fields)
+                        .map_with_span(|((ty_name, name), fields), span| {
+                            (
+                                Expr::Ctor {
+                                    ty_name,
+                                    name,
+                                    fields,
+                                },
+                                span,
+                            )
+                        });
+
+                let term = choice((call, lit, var, paren));
+
                 let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
                     .map_with_span(|token, span: Span| (token, span))
                     .repeated()
@@ -184,34 +289,8 @@ pub fn parser<'tokens, 'src: 'tokens>(
                         )
                     },
                 );
-                let r#if = just(Token::If)
-                    .ignore_then(expr.clone())
-                    .then(block.clone())
-                    .then(just(Token::Else).ignore_then(block.clone()).or_not())
-                    .map_with_span(|((cond, then), els), span: Span| {
-                        if let Some(els) = els {
-                            (
-                                Expr::If {
-                                    cond: Box::new(cond),
-                                    then: Box::new(then),
-                                    els: Some(Box::new(els)),
-                                },
-                                span,
-                            )
-                        } else {
-                            (
-                                Expr::If {
-                                    cond: Box::new(cond),
-                                    then: Box::new(then),
-                                    els: None,
-                                },
-                                span,
-                            )
-                        }
-                    });
-                comparison.or(sum).or(r#if).or(block
-                    .clone()
-                    .map_with_span(|x, span| (Expr::Block(Box::new(x)), span)))
+
+                choice((comparison, ctor, r#if, expr_block, tuple))
             });
             let stmt_let = just(Token::Let)
                 .ignore_then(ident)
@@ -220,7 +299,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
                 .then_ignore(just(Token::Semicolon))
-                .map_with_span(|((name, ty), rhs), span: Span| {
+                .map_with_span(|((name, ty), rhs), span| {
                     (
                         Stmt::Let {
                             name,
@@ -244,7 +323,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
             let stmt_while = just(Token::While)
                 .ignore_then(expr.clone())
                 .then(block.clone())
-                .map_with_span(|(cond, body), span: Span| {
+                .map_with_span(|(cond, body), span| {
                     (
                         Stmt::While {
                             cond: Box::new(cond),
@@ -261,7 +340,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 .then_ignore(just(Token::To))
                 .then(expr.clone())
                 .then(block.clone())
-                .map_with_span(|(((var, start), end), body), span: Span| {
+                .map_with_span(|(((var, start), end), body), span| {
                     (
                         Stmt::For {
                             var,
@@ -285,7 +364,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
                 .then_ignore(just(Token::Semicolon))
-                .map_with_span(|(name, rhs), span: Span| {
+                .map_with_span(|(name, rhs), span| {
                     (
                         Stmt::Assign {
                             name,
@@ -342,9 +421,9 @@ pub fn parser<'tokens, 'src: 'tokens>(
         .then_ignore(just(Token::Arrow))
         .then(ident)
         .then(block.clone())
-        .map_with_span(|(((name, args), return_ty), body), span: Span| {
+        .map_with_span(|(((name, args), return_ty), body), span| {
             (
-                FuncDecl {
+                Decl::FuncDecl {
                     name,
                     args,
                     return_ty,
@@ -353,10 +432,39 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 span,
             )
         });
-    let module = r#fn
+    let nameless_fields = ident
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map(|fields| Fields::NamelessFields(fields));
+    let named_fields = ident
+        .then(just(Token::Colon).ignore_then(ident))
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+        .map(|fields| Fields::NamedFields(fields));
+
+    let fields = choice((nameless_fields, named_fields));
+    let ctor = ident
+        .then(fields.clone())
+        .map_with_span(|(name, fields), span| (CtorDecl { name, fields }, span));
+    let r#type = just(Token::Type)
+        .ignore_then(ident)
+        .then(
+            ctor.separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+        )
+        .map_with_span(|(name, ctors), span| (Decl::TypeDecl { name, ctors }, span));
+
+    let decls = choice((r#fn, r#type));
+    let module = decls
         .repeated()
         .collect::<Vec<_>>()
-        .map(|defs| Module { func_decls: defs });
+        .map(|decls| Module { decls });
 
     module.then_ignore(end())
 }

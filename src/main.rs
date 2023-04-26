@@ -4,10 +4,12 @@ use ariadne::{sources, Color, Label, Report, ReportKind};
 
 mod ast;
 mod parser;
+mod error;
 
 use ast::*;
-use parser::lexer::{lexer, Span};
+use parser::lexer::lexer;
 use parser::parser;
+use error::Span;
 
 // use rpds::HashTrieMap;
 
@@ -139,7 +141,6 @@ fn main() {
                     .print(sources([(filename.clone(), src.clone())]))
                     .unwrap()
             });
-
     // match parser().parse(result) {
     //     Ok(ast) => {
     //         println!("{:#?}", ast);

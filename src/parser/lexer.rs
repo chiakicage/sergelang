@@ -1,10 +1,10 @@
 use chumsky::prelude::*;
 use std::fmt;
 
-pub type Span = SimpleSpan<usize>;
-pub type Error<'src, T> = extra::Err<Rich<'src, T, Span>>;
+use crate::error::{Span, Error, Spanned};
 
-pub type Spanned<T> = (T, Span);
+
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
@@ -19,6 +19,7 @@ pub enum Token<'src> {
     Continue,
     Match,
     Import,
+    Type,
     In,
     To,
     As,
@@ -78,6 +79,7 @@ impl<'src> fmt::Display for Token<'src> {
             Token::Continue => write!(f, "continue"),
             Token::Match => write!(f, "match"),
             Token::Import => write!(f, "import"),
+            Token::Type => write!(f, "type"),
             Token::In => write!(f, "in"),
             Token::To => write!(f, ".."),
             Token::As => write!(f, "as"),
@@ -182,6 +184,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         text::keyword("continue").to(Token::Continue),
         text::keyword("as").to(Token::As),
         text::keyword("import").to(Token::Import),
+        text::keyword("type").to(Token::Type),
     ));
     let num = text::int::<&'src str, char, Error<'src, char>>(10)
         .from_str::<i32>()
@@ -206,5 +209,5 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         .padded()
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
-        .collect::<Vec<Spanned<Token>>>()
+        .collect::<Vec<_>>()
 }
