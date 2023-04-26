@@ -21,76 +21,67 @@ pub fn parser<'tokens, 'src: 'tokens>(
     }
     .labelled("ident");
 
-    let var = ident
-        .map_with_span(|s, span: Span| (Expr::Var(s), span))
-        .labelled("var");
-
-    let lit = lit.map_with_span(|lit, span| (Expr::Lit(lit), span));
-
     let typed_ctor = ident
         .then_ignore(just(Token::Scope))
         .then(ident)
         .map(|(ty, ctor)| (ty, ctor));
 
-    // let pattern = recursive(|pattern| {
-    //     let items = pattern
-    //         .clone()
-    //         .separated_by(just(Token::Comma))
-    //         .allow_trailing()
-    //         .collect::<Vec<_>>();
+    let pattern = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
+        |pattern: Recursive<Direct<_, Spanned<Pattern>, _>>| {
+            let items = pattern
+                .clone()
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>();
 
-    //     let tuple = items
-    //         .delimited_by(just(Token::LParen), just(Token::RParen))
-    //         .map_with_span(|args, span: Span| (Pattern::Tuple(args), span));
+            let tuple = items
+                .clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .map_with_span(|args, span: Span| (Pattern::Tuple(args), span));
 
-    //     let nameless_ctor = typed_ctor
-    //         .then(
-    //             items
-    //                 .clone()
-    //                 .delimited_by(just(Token::LParen), just(Token::RParen)),
-    //         )
-    //         .map_with_span(|((ty_name, name), fields), span| {
-    //             (
-    //                 Pattern::NamelessCtorPattern(NamelessCtorPattern {
-    //                     ty_name,
-    //                     name,
-    //                     fields
-    //                 }),
-    //                 span,
-    //             )
-    //         });
+            let nameless_fields = items
+                .clone()
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .map(|args| PatternFields::NamelessFields(args));
 
-    //     let named_fields = ident
-    //         .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
-    //         .separated_by(just(Token::Comma))
-    //         .allow_trailing()
-    //         .collect::<Vec<_>>();
+            let named_fields = ident
+                .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .map(|args| PatternFields::NamedFields(args));
 
-    //     let named_ctor = typed_ctor
-    //         .then(named_fields.delimited_by(just(Token::LBrace), just(Token::RBrace)))
-    //         .map_with_span(|((ty_name, name), fields), span| {
-    //             (
-    //                 Pattern::NamedCtorPattern(NamedCtorPattern {
-    //                     ty_name,
-    //                     name,
-    //                     fields
-    //                 }),
-    //                 span,
-    //             )
-    //         });
+            let ctor = typed_ctor
+                .clone()
+                .then(nameless_fields.or(named_fields))
+                .map_with_span(|((ty_name, name), fields), span| {
+                    (
+                        Pattern::Ctor {
+                            ty_name,
+                            name,
+                            fields,
+                        },
+                        span,
+                    )
+                });
 
-    //     let ctor = nameless_ctor.or(named_ctor);
+            let lit = lit.map_with_span(|lit, span: Span| (Pattern::Lit(lit), span));
 
-    //     let lit = lit.map_with_span(|lit, span| (Pattern::Lit(lit), span));
+            let var = ident.map_with_span(|var, span: Span| (Pattern::Var(var), span));
 
-    //     let var = ident.map_with_span(|var, span| (Pattern::Var(var), span));
-
-    //     choice((tuple, ctor, lit, var));
-    // });
+            choice((tuple, ctor, lit, var))
+        },
+    );
 
     let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
             let expr = recursive(|expr| {
+                let var = ident
+                    .map_with_span(|s, span: Span| (Expr::Var(s), span))
+                    .labelled("var");
+
+                let lit = lit.map_with_span(|lit, span| (Expr::Lit(lit), span));
                 let r#if = just(Token::If)
                     .ignore_then(expr.clone())
                     .then(block.clone())
@@ -117,6 +108,31 @@ pub fn parser<'tokens, 'src: 'tokens>(
                         }
                     });
 
+                let match_arm = pattern
+                    .clone()
+                    .then(just(Token::DArrow).ignore_then(expr.clone()))
+                    .map_with_span(|(pattern, expr), span| (MatchArm { pattern, expr }, span));
+
+                let r#match = just(Token::Match)
+                    .ignore_then(expr.clone())
+                    .then(
+                        match_arm
+                            .clone()
+                            .separated_by(just(Token::Comma))
+                            .allow_trailing()
+                            .collect::<Vec<_>>()
+                            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    )
+                    .map_with_span(|(expr, arms), span: Span| {
+                        (
+                            Expr::Match {
+                                expr: Box::new(expr),
+                                arms,
+                            },
+                            span,
+                        )
+                    });
+
                 let paren = expr
                     .clone()
                     .delimited_by(just(Token::LParen), just(Token::RParen));
@@ -139,7 +155,13 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     .clone()
                     .map_with_span(|x, span| (Expr::Block(Box::new(x)), span));
 
-                let callable = choice((var, paren.clone(), expr_block.clone(), r#if.clone()));
+                let callable = choice((
+                    var,
+                    paren.clone(),
+                    expr_block.clone(),
+                    r#if.clone(),
+                    r#match.clone(),
+                ));
 
                 let index = expr
                     .clone()
@@ -290,7 +312,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     },
                 );
 
-                choice((comparison, ctor, r#if, expr_block, tuple))
+                choice((comparison, sum, ctor, r#if, expr_block, tuple, r#match))
             });
             let stmt_let = just(Token::Let)
                 .ignore_then(ident)

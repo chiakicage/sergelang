@@ -21,5 +21,11 @@ fn main() -> int {
 	let a: int = 1;
 	let b: int = 2;
 	let c: int = if a > b { add } else { sub }(a, b)[123](a);
+	let c: int = match gcd(a, b) {
+		(a, b) => a,
+		Name::Last { first: a, last: b } => b,
+		Name::First(a) => a,
+		Name::Last { first, second } => None,
+	};
 }
 

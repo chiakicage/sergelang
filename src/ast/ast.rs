@@ -10,16 +10,8 @@ pub enum Fields<'src> {
     NamelessFields(Vec<Spanned<&'src str>>),
     NamedFields(Vec<(Spanned<&'src str>, Spanned<&'src str>)>),
 }
-#[derive(Debug)]
-pub enum PatternFields<'src> {
-    NamelessFields(Vec<Spanned<Pattern<'src>>>),
-    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Pattern<'src>>>)>),
-}
-#[derive(Debug)]
-pub enum ExprFields<'src> {
-    NamelessFields(Vec<Spanned<Expr<'src>>>),
-    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Expr<'src>>>)>),
-}
+
+
 
 #[derive(Debug)]
 pub struct CtorDecl<'src> {
@@ -42,6 +34,12 @@ pub enum Decl<'src> {
 }
 
 #[derive(Debug)]
+pub enum PatternFields<'src> {
+    NamelessFields(Vec<Spanned<Pattern<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Pattern<'src>>>)>),
+}
+
+#[derive(Debug)]
 pub enum Pattern<'src> {
     Lit(Literal<'src>),
     Var(Spanned<&'src str>),
@@ -57,6 +55,18 @@ pub enum Pattern<'src> {
 pub enum ArgsOrIndex<'src> {
     Args(Vec<Spanned<Expr<'src>>>),
     Index(Box<Spanned<Expr<'src>>>),
+}
+
+#[derive(Debug)]
+pub enum ExprFields<'src> {
+    NamelessFields(Vec<Spanned<Expr<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Expr<'src>>>)>),
+}
+
+#[derive(Debug)]
+pub struct MatchArm<'src> {
+    pub pattern: Spanned<Pattern<'src>>,
+    pub expr: Spanned<Expr<'src>>,
 }
 
 #[derive(Debug)]
@@ -93,6 +103,10 @@ pub enum Expr<'src> {
         ty_name: Spanned<&'src str>,
         name: Spanned<&'src str>,
         fields: ExprFields<'src>,
+    },
+    Match {
+        expr: Box<Spanned<Expr<'src>>>,
+        arms: Vec<Spanned<MatchArm<'src>>>,
     },
 
     Block(Box<Spanned<Block<'src>>>),
