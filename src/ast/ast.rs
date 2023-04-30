@@ -1,4 +1,4 @@
-use crate::error::{Span, Spanned};
+use crate::utils::error::Spanned;
 
 #[derive(Debug)]
 pub struct Module<'src> {

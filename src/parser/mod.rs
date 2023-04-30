@@ -1,7 +1,7 @@
 pub mod lexer;
 
 use crate::ast::ast::*;
-use crate::error::{Error, Span, Spanned};
+use crate::utils::error::{ParserError, Span, Spanned};
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
 use lexer::Token;
@@ -130,7 +130,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>,
     Spanned<Module<'src>>,
-    Error<'tokens, Token<'src>>,
+    ParserError<'tokens, Token<'src>>,
 > + Clone {
     let lit = select! {
         Token::Int(x) => Literal::Int(x),
@@ -148,7 +148,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
         .then(ident)
         .map(|(ty, ctor)| (ty, ctor));
 
-    let pattern = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
+    let pattern = recursive::<_, _, ParserError<'tokens, Token<'src>>, _, _>(
         |pattern: Recursive<Direct<_, Spanned<Pattern>, _>>| {
             let items = pattern
                 .clone()
@@ -224,7 +224,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
         choice((tuple, array, named, func))
     });
 
-    let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
+    let block = recursive::<_, _, ParserError<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
             let expr = recursive(|expr| {
                 let var = ident

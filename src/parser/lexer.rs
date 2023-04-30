@@ -1,10 +1,7 @@
 use chumsky::prelude::*;
 use std::fmt;
 
-use crate::error::{Span, Error, Spanned};
-
-
-
+use crate::utils::error::{ParserError, Span, Spanned};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
@@ -133,7 +130,8 @@ impl<'src> fmt::Display for Token<'src> {
     }
 }
 
-pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, Error<'src, char>> {
+pub fn lexer<'src>(
+) -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, ParserError<'src, char>> {
     let op = choice([
         just('=').then_ignore(just('=')).to(Token::Eq),
         just('!').then_ignore(just('=')).to(Token::Neq),
@@ -195,7 +193,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         text::keyword("true").to(Token::True),
         text::keyword("false").to(Token::False),
     ]);
-    let num = text::int::<&'src str, char, Error<'src, char>>(10)
+    let num = text::int::<&'src str, char, ParserError<'src, char>>(10)
         .from_str::<i32>()
         .unwrapped()
         .map(Token::Int);
@@ -204,22 +202,21 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         .then_ignore(just('"'))
         .map_slice(Token::Str);
 
-    let ident = text::ident::<&'src str, char, Error<'src, char>>().map(Token::Ident);
+    let ident = text::ident::<&'src str, char, ParserError<'src, char>>().map(Token::Ident);
 
     let token = num.or(op).or(keyword).or(ident).or(r#str);
 
-    let single_comment = just::<_, &str, Error<'src, char>>("//")
+    let single_comment = just::<_, &str, ParserError<'src, char>>("//")
         .ignore_then(none_of("\n").repeated())
         .then_ignore(just("\n"))
         .padded();
 
-    let multi_comment = just::<_, &str, Error<'src, char>>("/*")
+    let multi_comment = just::<_, &str, ParserError<'src, char>>("/*")
         .ignore_then(none_of("*/").repeated())
         .then_ignore(just("*/"))
         .padded();
 
     let comment = single_comment.or(multi_comment);
-
 
     token
         .map_with_span(|tok, span| (tok, span))

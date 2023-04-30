@@ -3,11 +3,12 @@ use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 mod ast;
-mod error;
+mod utils;
 mod parser;
 
 use ast::*;
-use error::Span;
+use ast::typed_ast::expr_type_check;
+use utils::error::Span;
 use parser::lexer::lexer;
 use parser::parser;
 
@@ -123,6 +124,7 @@ fn main() {
     } else {
         Vec::new()
     };
+    // let type_check_err = expr_type_check(Expr::Var(("x", (1..2).into()))).unwrap_err();
     errs.into_iter()
         .map(|e| e.map_token(|c| c.to_string()))
         .chain(
@@ -130,6 +132,7 @@ fn main() {
                 .into_iter()
                 .map(|e| e.map_token(|tok| tok.to_string())),
         )
+        // .chain(vec![type_check_err].into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
                 .with_message(e.to_string())

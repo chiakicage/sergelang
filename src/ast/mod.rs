@@ -1,9 +1,10 @@
 pub mod ast;
+pub mod typed_ast;
 
 pub use ast::*;
 
 use std::fmt;
-use crate::error::{Span, Spanned};
+use crate::utils::error::{Span, Spanned};
 
 type SpannedExpr<'src> = Spanned<Expr<'src>>;
 
