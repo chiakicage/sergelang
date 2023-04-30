@@ -1,15 +1,15 @@
-use chumsky::prelude::*;
 use ariadne::{sources, Color, Label, Report, ReportKind};
+use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 mod ast;
-mod parser;
 mod error;
+mod parser;
 
 use ast::*;
+use error::Span;
 use parser::lexer::lexer;
 use parser::parser;
-use error::Span;
 
 // use rpds::HashTrieMap;
 
@@ -114,7 +114,8 @@ fn main() {
             )
             .into_output_errors();
         if let Some(ast) = ast {
-            println!("{:#?}", ast);
+            // println!("{:#?}", ast);
+            println!("{:#?}", AstPrinter::new(ast));
             Vec::new()
         } else {
             parse_errs
@@ -123,38 +124,25 @@ fn main() {
         Vec::new()
     };
     errs.into_iter()
-            .map(|e| e.map_token(|c| c.to_string()))
-            .chain(
-                parse_errs
-                    .into_iter()
-                    .map(|e| e.map_token(|tok| tok.to_string()))
-            )
-            .for_each(|e| {
-                Report::build(ReportKind::Error, filename.clone(), e.span().start)
-                    .with_message(e.to_string())
-                    .with_label(
-                        Label::new((filename.clone(), e.span().into_range()))
-                            .with_message(e.reason().to_string())
-                            .with_color(Color::Red),
-                    )
-                    .finish()
-                    .print(sources([(filename.clone(), src.clone())]))
-                    .unwrap()
-            });
-    // match parser().parse(result) {
-    //     Ok(ast) => {
-    //         println!("{:#?}", ast);
-    //         match eval(
-    //             &ast,
-    //             &HashTrieMap::new(),
-    //             &HashTrieMap::new(),
-    //         ) {
-    //             Ok(x) => println!("{}", x),
-    //             Err(e) => println!("Evaluation error: {}", e),
-    //         }
-    //     }
-    //     Err(parse_errs) => parse_errs
-    //         .into_iter()
-    //         .for_each(|e| println!("Parse error: {:?}", e)),
-    // }
+        .map(|e| e.map_token(|c| c.to_string()))
+        .chain(
+            parse_errs
+                .into_iter()
+                .map(|e| e.map_token(|tok| tok.to_string())),
+        )
+        .for_each(|e| {
+            Report::build(ReportKind::Error, filename.clone(), e.span().start)
+                .with_message(e.to_string())
+                .with_label(
+                    Label::new((filename.clone(), e.span().into_range()))
+                        .with_message(e.reason().to_string())
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .print(sources([(filename.clone(), src.clone())]))
+                .unwrap()
+        });
+    
+    let add = |a: i32, b: i32| -> i32 { a + b };
+
 }

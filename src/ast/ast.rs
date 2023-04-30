@@ -7,11 +7,9 @@ pub struct Module<'src> {
 
 #[derive(Debug)]
 pub enum Fields<'src> {
-    NamelessFields(Vec<Spanned<&'src str>>),
-    NamedFields(Vec<(Spanned<&'src str>, Spanned<&'src str>)>),
+    NamelessFields(Vec<Spanned<Type<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Spanned<Type<'src>>)>),
 }
-
-
 
 #[derive(Debug)]
 pub struct CtorDecl<'src> {
@@ -23,8 +21,8 @@ pub struct CtorDecl<'src> {
 pub enum Decl<'src> {
     FuncDecl {
         name: Spanned<&'src str>,
-        args: Vec<(Spanned<&'src str>, Spanned<&'src str>)>,
-        return_ty: Spanned<&'src str>,
+        args: Vec<(Spanned<&'src str>, Spanned<Type<'src>>)>,
+        return_ty: Option<Spanned<Type<'src>>>,
         body: Box<Spanned<Block<'src>>>,
     },
     TypeDecl {
@@ -74,6 +72,8 @@ pub enum Expr<'src> {
     Lit(Literal<'src>),
     Var(Spanned<&'src str>),
     Tuple(Vec<Spanned<Expr<'src>>>),
+    Array(Vec<Spanned<Expr<'src>>>),
+    Block(Box<Spanned<Block<'src>>>),
 
     BinOpExpr {
         lhs: Box<Spanned<Expr<'src>>>,
@@ -108,8 +108,12 @@ pub enum Expr<'src> {
         expr: Box<Spanned<Expr<'src>>>,
         arms: Vec<Spanned<MatchArm<'src>>>,
     },
+    Closure {
+        args: Vec<(Spanned<&'src str>, Spanned<Type<'src>>,)>,
+        return_ty: Option<Spanned<Type<'src>>>,
+        body: Box<Spanned<Block<'src>>>,
+    },
 
-    Block(Box<Spanned<Block<'src>>>),
 }
 
 #[derive(Debug, Clone)]
@@ -119,7 +123,6 @@ pub enum Literal<'src> {
     Str(&'src str),
     Bool(bool),
     Char(char),
-    Unit,
 }
 #[derive(Debug)]
 pub struct Block<'src> {
@@ -131,7 +134,7 @@ pub struct Block<'src> {
 pub enum Stmt<'src> {
     Let {
         name: Spanned<&'src str>,
-        ty: Spanned<&'src str>,
+        ty: Spanned<Type<'src>>,
         rhs: Box<Spanned<Expr<'src>>>,
     },
     While {
@@ -167,10 +170,21 @@ pub enum BinOp {
     Gt,
     Lte,
     Gte,
+    And,
+    Or,
 }
 #[derive(Debug, Clone)]
 pub enum UnOp {
     Neg,
     Not,
     BitNot,
+}
+
+#[derive(Debug)]
+pub enum Type<'src> {
+    Tuple(Vec<Spanned<Type<'src>>>),
+    Array(Box<Spanned<Type<'src>>>),
+    Named(Spanned<&'src str>),
+    Func(Vec<Spanned<Type<'src>>>, Box<Spanned<Type<'src>>>),
+
 }

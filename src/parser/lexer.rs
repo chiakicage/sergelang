@@ -19,7 +19,7 @@ pub enum Token<'src> {
     Continue,
     Match,
     Import,
-    Type,
+    Enum,
     In,
     To,
     As,
@@ -61,6 +61,8 @@ pub enum Token<'src> {
     DArrow,
     Backslash,
     Underscore,
+    True,
+    False,
     Int(i32),
     Str(&'src str),
     Ident(&'src str),
@@ -80,7 +82,9 @@ impl<'src> fmt::Display for Token<'src> {
             Token::Continue => write!(f, "continue"),
             Token::Match => write!(f, "match"),
             Token::Import => write!(f, "import"),
-            Token::Type => write!(f, "type"),
+            Token::Enum => write!(f, "enum"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
             Token::In => write!(f, "in"),
             Token::To => write!(f, ".."),
             Token::As => write!(f, "as"),
@@ -173,7 +177,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         just('\\').to(Token::Backslash),
         just('_').to(Token::Underscore),
     ]));
-    let keyword = choice((
+    let keyword = choice([
         text::keyword("if").to(Token::If),
         text::keyword("else").to(Token::Else),
         text::keyword("for").to(Token::For),
@@ -187,8 +191,10 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         text::keyword("continue").to(Token::Continue),
         text::keyword("as").to(Token::As),
         text::keyword("import").to(Token::Import),
-        text::keyword("type").to(Token::Type),
-    ));
+        text::keyword("enum").to(Token::Enum),
+        text::keyword("true").to(Token::True),
+        text::keyword("false").to(Token::False),
+    ]);
     let num = text::int::<&'src str, char, Error<'src, char>>(10)
         .from_str::<i32>()
         .unwrapped()
@@ -202,9 +208,18 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
     let token = num.or(op).or(keyword).or(ident).or(r#str);
 
-    let comment = just::<_, &str, Error<'src, char>>("//")
-        .then(none_of("\n").repeated())
+    let single_comment = just::<_, &str, Error<'src, char>>("//")
+        .ignore_then(none_of("\n").repeated())
+        .then_ignore(just("\n"))
         .padded();
+
+    let multi_comment = just::<_, &str, Error<'src, char>>("/*")
+        .ignore_then(none_of("*/").repeated())
+        .then_ignore(just("*/"))
+        .padded();
+
+    let comment = single_comment.or(multi_comment);
+
 
     token
         .map_with_span(|tok, span| (tok, span))

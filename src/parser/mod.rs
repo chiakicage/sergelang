@@ -2,14 +2,136 @@ pub mod lexer;
 
 use crate::ast::ast::*;
 use crate::error::{Error, Span, Spanned};
+use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
 use lexer::Token;
 
+#[derive(Clone, Copy, Debug)]
+enum Operator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Lte,
+    Gte,
+    And,
+    Or,
+}
+
+impl<'src> InfixOperator<Spanned<Expr<'src>>> for Operator {
+    type Strength = u8;
+
+    fn precedence(&self) -> InfixPrecedence<Self::Strength> {
+        match self {
+            Self::And => InfixPrecedence::new(0, Associativity::Left),
+            Self::Or => InfixPrecedence::new(0, Associativity::Left),
+            Self::Eq => InfixPrecedence::new(1, Associativity::Left),
+            Self::Neq => InfixPrecedence::new(1, Associativity::Left),
+            Self::Lt => InfixPrecedence::new(1, Associativity::Left),
+            Self::Gt => InfixPrecedence::new(1, Associativity::Left),
+            Self::Lte => InfixPrecedence::new(1, Associativity::Left),
+            Self::Gte => InfixPrecedence::new(1, Associativity::Left),
+            Self::Add => InfixPrecedence::new(2, Associativity::Left),
+            Self::Sub => InfixPrecedence::new(2, Associativity::Left),
+            Self::Mul => InfixPrecedence::new(3, Associativity::Left),
+            Self::Div => InfixPrecedence::new(3, Associativity::Left),
+            Self::Mod => InfixPrecedence::new(3, Associativity::Left),
+        }
+    }
+
+    fn build_expression(
+        self,
+        left: Spanned<Expr<'src>>,
+        right: Spanned<Expr<'src>>,
+    ) -> Spanned<Expr<'src>> {
+        let (lhs, rhs) = (Box::new(left), Box::new(right));
+        let span = (lhs.1.start..rhs.1.end).into();
+        (
+            match self {
+                Self::And => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::And,
+                    rhs,
+                },
+                Self::Or => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Or,
+                    rhs,
+                },
+                Self::Eq => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Eq,
+                    rhs,
+                },
+                Self::Neq => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Neq,
+                    rhs,
+                },
+                Self::Lt => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Lt,
+                    rhs,
+                },
+                Self::Gt => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Gt,
+                    rhs,
+                },
+                Self::Lte => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Lte,
+                    rhs,
+                },
+                Self::Gte => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Gte,
+                    rhs,
+                },
+                Self::Add => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Add,
+                    rhs,
+                },
+                Self::Sub => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Sub,
+                    rhs,
+                },
+                Self::Mul => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Mul,
+                    rhs,
+                },
+                Self::Div => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Div,
+                    rhs,
+                },
+                Self::Mod => Expr::BinOpExpr {
+                    lhs,
+                    op: BinOp::Mod,
+                    rhs,
+                },
+            },
+            span,
+        )
+    }
+}
+
 type ParserInput<'tokens, 'src> = SpannedInput<Token<'src>, Span, &'tokens [Spanned<Token<'src>>]>;
 
-pub fn parser<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Module<'src>, Error<'tokens, Token<'src>>> + Clone
-{
+pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>,
+    Spanned<Module<'src>>,
+    Error<'tokens, Token<'src>>,
+> + Clone {
     let lit = select! {
         Token::Int(x) => Literal::Int(x),
         // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).(span)
@@ -73,6 +195,34 @@ pub fn parser<'tokens, 'src: 'tokens>(
             choice((tuple, ctor, lit, var))
         },
     );
+
+    let r#type = recursive(|r#type| {
+        let tuple = r#type
+            .clone()
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with_span(|args, span: Span| (Type::Tuple(args), span));
+        let array = r#type
+            .clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map_with_span(|ty, span: Span| (Type::Array(Box::new(ty)), span));
+        let named = ident.map_with_span(|name, span: Span| (Type::Named(name), span));
+        let func = just(Token::Fn)
+            .ignore_then(
+                r#type
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then_ignore(just(Token::Arrow))
+            .then(r#type.clone())
+            .map_with_span(|(args, ret), span| (Type::Func(args, Box::new(ret)), span));
+        choice((tuple, array, named, func))
+    });
 
     let block = recursive::<_, _, Error<'tokens, Token<'src>>, _, _>(
         |block: Recursive<Direct<_, Spanned<Block>, _>>| {
@@ -145,6 +295,36 @@ pub fn parser<'tokens, 'src: 'tokens>(
                     .delimited_by(just(Token::LParen), just(Token::RParen))
                     .map_with_span(|args, span: Span| (Expr::Tuple(args), span));
 
+                let array = expr
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                    .map_with_span(|args, span: Span| (Expr::Array(args), span));
+
+                let closure = just(Token::BitOr)
+                    .ignore_then(
+                        ident
+                            .then_ignore(just(Token::Colon))
+                            .then(r#type.clone())
+                            .separated_by(just(Token::Comma))
+                            .collect::<Vec<_>>(),
+                    )
+                    .then_ignore(just(Token::BitOr))
+                    .then(just(Token::Arrow).ignore_then(r#type.clone()).or_not())
+                    .then(block.clone())
+                    .map_with_span(|((args, return_ty), body), span: Span| {
+                        (
+                            Expr::Closure {
+                                args,
+                                return_ty,
+                                body: Box::new(body),
+                            },
+                            span,
+                        )
+                    });
+
                 let items = expr
                     .clone()
                     .separated_by(just(Token::Comma))
@@ -157,6 +337,9 @@ pub fn parser<'tokens, 'src: 'tokens>(
 
                 let callable = choice((
                     var,
+                    closure.clone(),
+                    tuple.clone(),
+                    array.clone(),
                     paren.clone(),
                     expr_block.clone(),
                     r#if.clone(),
@@ -224,7 +407,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 let unary = choice((just(Token::Minus), just(Token::Not), just(Token::BitNot)))
                     .map_with_span(|token, span: Span| (token, span))
                     .repeated()
-                    .foldr(term, |op, rhs: Spanned<Expr>| {
+                    .foldr(term.clone(), |op, rhs: Spanned<Expr>| {
                         let span = (op.1.start..rhs.1.end).into();
                         (
                             Expr::UnOpExpr {
@@ -239,85 +422,31 @@ pub fn parser<'tokens, 'src: 'tokens>(
                             span,
                         )
                     });
-                let product = unary.clone().foldl(
-                    choice((just(Token::Mul), just(Token::Div), just(Token::Mod)))
-                        .then(unary.clone())
-                        .repeated(),
-                    |lhs, (op, rhs)| {
-                        let span = (lhs.1.start..rhs.1.end).into();
-                        (
-                            Expr::BinOpExpr {
-                                lhs: Box::new(lhs),
-                                op: match op {
-                                    Token::Mul => BinOp::Mul,
-                                    Token::Div => BinOp::Div,
-                                    Token::Mod => BinOp::Mod,
-                                    _ => unreachable!(),
-                                },
-                                rhs: Box::new(rhs),
-                            },
-                            span,
-                        )
-                    },
-                );
-                let sum = product.clone().foldl(
-                    choice((just(Token::Plus), just(Token::Minus), just(Token::Mod)))
-                        .then(product.clone())
-                        .repeated(),
-                    |lhs, (op, rhs)| {
-                        let span = (lhs.1.start..rhs.1.end).into();
-                        (
-                            Expr::BinOpExpr {
-                                lhs: Box::new(lhs),
-                                op: match op {
-                                    Token::Plus => BinOp::Add,
-                                    Token::Minus => BinOp::Sub,
-                                    _ => unreachable!(),
-                                },
-                                rhs: Box::new(rhs),
-                            },
-                            span,
-                        )
-                    },
-                );
-                let comparison = sum.clone().foldl(
-                    choice((
-                        just(Token::Eq),
-                        just(Token::Neq),
-                        just(Token::Lt),
-                        just(Token::Gt),
-                        just(Token::Lte),
-                        just(Token::Gte),
-                    ))
-                    .then(sum.clone())
-                    .repeated(),
-                    |lhs, (op, rhs)| {
-                        let span = (lhs.1.start..rhs.1.end).into();
-                        (
-                            Expr::BinOpExpr {
-                                lhs: Box::new(lhs),
-                                op: match op {
-                                    Token::Eq => BinOp::Eq,
-                                    Token::Neq => BinOp::Neq,
-                                    Token::Lt => BinOp::Lt,
-                                    Token::Gt => BinOp::Gt,
-                                    Token::Lte => BinOp::Lte,
-                                    Token::Gte => BinOp::Gte,
-                                    _ => unreachable!(),
-                                },
-                                rhs: Box::new(rhs),
-                            },
-                            span,
-                        )
-                    },
-                );
+                let operator = choice((
+                    just(Token::Plus).to(Operator::Add),
+                    just(Token::Minus).to(Operator::Sub),
+                    just(Token::Mul).to(Operator::Mul),
+                    just(Token::Div).to(Operator::Div),
+                    just(Token::Mod).to(Operator::Mod),
+                    just(Token::And).to(Operator::And),
+                    just(Token::Or).to(Operator::Or),
+                    just(Token::Eq).to(Operator::Eq),
+                    just(Token::Neq).to(Operator::Neq),
+                    just(Token::Lt).to(Operator::Lt),
+                    just(Token::Gt).to(Operator::Gt),
+                    just(Token::Lte).to(Operator::Lte),
+                    just(Token::Gte).to(Operator::Gte),
+                ));
+                let binop = unary.pratt(operator);
 
-                choice((comparison, sum, ctor, r#if, expr_block, tuple, r#match))
+                choice((
+                    binop, array, tuple, term, ctor, r#if, r#match, expr_block, closure,
+                ))
             });
             let stmt_let = just(Token::Let)
                 .ignore_then(ident)
                 .then_ignore(just(Token::Colon))
-                .then(ident)
+                .then(r#type.clone())
                 .then_ignore(just(Token::Assign))
                 .then(expr.clone())
                 .then_ignore(just(Token::Semicolon))
@@ -435,13 +564,12 @@ pub fn parser<'tokens, 'src: 'tokens>(
         .then(
             ident
                 .then_ignore(just(Token::Colon))
-                .then(ident)
+                .then(r#type.clone())
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
-        .then_ignore(just(Token::Arrow))
-        .then(ident)
+        .then(just(Token::Arrow).ignore_then(r#type.clone()).or_not())
         .then(block.clone())
         .map_with_span(|(((name, args), return_ty), body), span| {
             (
@@ -454,14 +582,15 @@ pub fn parser<'tokens, 'src: 'tokens>(
                 span,
             )
         });
-    let nameless_fields = ident
+    let nameless_fields = r#type
+        .clone()
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen))
         .map(|fields| Fields::NamelessFields(fields));
     let named_fields = ident
-        .then(just(Token::Colon).ignore_then(ident))
+        .then(just(Token::Colon).ignore_then(r#type.clone()))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect::<Vec<_>>()
@@ -472,7 +601,7 @@ pub fn parser<'tokens, 'src: 'tokens>(
     let ctor = ident
         .then(fields.clone())
         .map_with_span(|(name, fields), span| (CtorDecl { name, fields }, span));
-    let r#type = just(Token::Type)
+    let r#enum = just(Token::Enum)
         .ignore_then(ident)
         .then(
             ctor.separated_by(just(Token::Comma))
@@ -482,11 +611,11 @@ pub fn parser<'tokens, 'src: 'tokens>(
         )
         .map_with_span(|(name, ctors), span| (Decl::TypeDecl { name, ctors }, span));
 
-    let decls = choice((r#fn, r#type));
+    let decls = choice((r#fn, r#enum));
     let module = decls
         .repeated()
         .collect::<Vec<_>>()
-        .map(|decls| Module { decls });
+        .map_with_span(|decls, span: Span| (Module { decls }, span));
 
     module.then_ignore(end())
 }
