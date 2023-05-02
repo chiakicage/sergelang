@@ -176,7 +176,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 
             let ctor = typed_ctor
                 .clone()
-                .then(nameless_fields.or(named_fields))
+                .then(nameless_fields.or(named_fields).or_not())
                 .map_with_span(|((ty_name, name), fields), span| {
                     (
                         Pattern::Ctor {
@@ -203,12 +203,12 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .allow_trailing()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LParen), just(Token::RParen))
-            .map_with_span(|args, span: Span| (Type::Tuple(args), span));
+            .map_with_span(|args, span: Span| (TypeRef::Tuple(args), span));
         let array = r#type
             .clone()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
-            .map_with_span(|ty, span: Span| (Type::Array(Box::new(ty)), span));
-        let named = ident.map_with_span(|name, span: Span| (Type::Named(name), span));
+            .map_with_span(|ty, span: Span| (TypeRef::Array(Box::new(ty)), span));
+        let named = ident.map_with_span(|name, span: Span| (TypeRef::Named(name), span));
         let func = just(Token::Fn)
             .ignore_then(
                 r#type
@@ -220,7 +220,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             )
             .then_ignore(just(Token::Arrow))
             .then(r#type.clone())
-            .map_with_span(|(args, ret), span| (Type::Func(args, Box::new(ret)), span));
+            .map_with_span(|(args, ret), span| (TypeRef::Func(args, Box::new(ret)), span));
         choice((tuple, array, named, func))
     });
 
@@ -390,7 +390,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 
                 let ctor =
                     typed_ctor
-                        .then(fields)
+                        .then(fields.or_not())
                         .map_with_span(|((ty_name, name), fields), span| {
                             (
                                 Expr::Ctor {
@@ -599,7 +599,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 
     let fields = choice((nameless_fields, named_fields));
     let ctor = ident
-        .then(fields.clone())
+        .then(fields.clone().or_not())
         .map_with_span(|(name, fields), span| (CtorDecl { name, fields }, span));
     let r#enum = just(Token::Enum)
         .ignore_then(ident)
