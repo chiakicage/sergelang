@@ -526,8 +526,8 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 let binop = unary.pratt(operator);
 
                 choice((
-                    binop, array, tuple, term, ctor, r#if, r#match, expr_block, closure, r#let,
-                    r#return, r#while, r#for, r#break, r#continue, assign,
+                    ctor, assign, binop, array, tuple, term, r#if, r#match, expr_block, closure, r#let,
+                    r#return, r#while, r#for, r#break, r#continue, 
                 ))
             });
 
