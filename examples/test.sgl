@@ -1,12 +1,12 @@
-/*fn gcd(a: int, b: int) -> int {
+fn gcd(a: int, b: int) -> int {
 	if b == 0 { a } else { gcd(b, a % b) }
 }
 
 enum Name {
-	First(String),
+	First(string),
 	Last {
-		first: String,
-		last: String,
+		first: string,
+		last: string,
 	}
 }
 
@@ -15,18 +15,28 @@ fn add(a: int, b: int) -> int {
 }
 fn sub(a: int, b: int) -> int {
 	a - b
-}*/
+}
 
 fn main() -> int {
 	let a: int = 1;
 	let b: int = 2;
-	let c: int = (1, 2, 3);
-	let d: int = [1, 2, 3];
+	let c: (int, int, int) = (1, 2, 3);
+	let d: [int] = [1, 2, 3];
 	let f: fn(int, int) -> int = sub;
-	let e: int = |a: int, b: int| -> int { a + b };
+	let e: fn(int, int) -> int = |a: int, b: int| -> int { a + b };
 	let t: ((int, int), int) = ((1, 2), 3);
-	let e: int = -d;
-	let c: int = a(a, b)[123](a);
+	let e: [int] = d;
+	let c: int = add(a, b);
+	if a > b {
+		a
+	} else if a < b {
+		b
+	} else {
+		c
+	}
+	if a < b {
+		a
+	}
 	
 }
 

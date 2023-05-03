@@ -23,9 +23,9 @@ pub enum Decl<'src> {
         name: Spanned<&'src str>,
         args: Vec<(Spanned<&'src str>, Spanned<TypeRef<'src>>)>,
         return_ty: Option<Spanned<TypeRef<'src>>>,
-        body: Box<Spanned<Block<'src>>>,
+        body: Box<Spanned<Expr<'src>>>, // only {}
     },
-    TypeDecl {
+    EnumDecl {
         name: Spanned<&'src str>,
         ctors: Vec<Spanned<CtorDecl<'src>>>,
     },
@@ -73,7 +73,7 @@ pub enum Expr<'src> {
     Var(Spanned<&'src str>),
     Tuple(Vec<Spanned<Expr<'src>>>),
     Array(Vec<Spanned<Expr<'src>>>),
-    Block(Box<Spanned<Block<'src>>>),
+    Block(Spanned<Block<'src>>),
 
     BinOpExpr {
         lhs: Box<Spanned<Expr<'src>>>,
@@ -87,8 +87,8 @@ pub enum Expr<'src> {
 
     If {
         cond: Box<Spanned<Expr<'src>>>,
-        then: Box<Spanned<Block<'src>>>,
-        els: Option<Box<Spanned<Block<'src>>>>,
+        then: Box<Spanned<Expr<'src>>>, // only if {} 
+        els: Option<Box<Spanned<Expr<'src>>>>, // only else {} or else if 
     },
 
     Call {
@@ -111,9 +111,30 @@ pub enum Expr<'src> {
     Closure {
         args: Vec<(Spanned<&'src str>, Spanned<TypeRef<'src>>,)>,
         return_ty: Option<Spanned<TypeRef<'src>>>,
-        body: Box<Spanned<Block<'src>>>,
+        body: Box<Spanned<Expr<'src>>>, // only {}
     },
-
+    Let {
+        name: Spanned<&'src str>,
+        ty: Spanned<TypeRef<'src>>,
+        rhs: Box<Spanned<Expr<'src>>>,
+    },
+    While {
+        cond: Box<Spanned<Expr<'src>>>,
+        body: Box<Spanned<Expr<'src>>>, // only {}
+    },
+    For {
+        var: Spanned<&'src str>,
+        start: Box<Spanned<Expr<'src>>>,
+        end: Box<Spanned<Expr<'src>>>,
+        body: Box<Spanned<Expr<'src>>>, // only {}
+    },
+    Return(Option<Box<Spanned<Expr<'src>>>>),
+    Break,
+    Continue,
+    Assign {
+        name: Spanned<&'src str>,
+        rhs: Box<Spanned<Expr<'src>>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -125,37 +146,8 @@ pub enum Literal<'src> {
     Char(char),
 }
 #[derive(Debug)]
-pub struct Block<'src> {
-    pub stmts: Option<Vec<Spanned<Stmt<'src>>>>,
-    pub return_value: Option<Spanned<Expr<'src>>>,
-}
+pub struct Block<'src>(pub Vec<Spanned<Expr<'src>>>);
 
-#[derive(Debug)]
-pub enum Stmt<'src> {
-    Let {
-        name: Spanned<&'src str>,
-        ty: Spanned<TypeRef<'src>>,
-        rhs: Box<Spanned<Expr<'src>>>,
-    },
-    While {
-        cond: Box<Spanned<Expr<'src>>>,
-        body: Box<Spanned<Block<'src>>>,
-    },
-    For {
-        var: Spanned<&'src str>,
-        start: Box<Spanned<Expr<'src>>>,
-        end: Box<Spanned<Expr<'src>>>,
-        body: Box<Spanned<Block<'src>>>,
-    },
-    Return(Option<Box<Spanned<Expr<'src>>>>),
-    Break,
-    Continue,
-    Assign {
-        name: Spanned<&'src str>,
-        rhs: Box<Spanned<Expr<'src>>>,
-    },
-    Expr(Box<Spanned<Expr<'src>>>),
-}
 
 #[derive(Debug, Clone)]
 pub enum BinOp {

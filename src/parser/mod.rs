@@ -232,31 +232,38 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .labelled("var");
 
                 let lit = lit.map_with_span(|lit, span| (Expr::Lit(lit), span));
-                let r#if = just(Token::If)
-                    .ignore_then(expr.clone())
-                    .then(block.clone())
-                    .then(just(Token::Else).ignore_then(block.clone()).or_not())
-                    .map_with_span(|((cond, then), els), span| {
-                        if let Some(els) = els {
-                            (
-                                Expr::If {
-                                    cond: Box::new(cond),
-                                    then: Box::new(then),
-                                    els: Some(Box::new(els)),
-                                },
-                                span,
-                            )
-                        } else {
-                            (
-                                Expr::If {
-                                    cond: Box::new(cond),
-                                    then: Box::new(then),
-                                    els: None,
-                                },
-                                span,
-                            )
-                        }
-                    });
+
+                let expr_block = block
+                    .clone()
+                    .map_with_span(|x, span| (Expr::Block(x), span));
+
+                let r#if = recursive(|r#if: Recursive<Direct<_, Spanned<Expr>, _>>| {
+                    just(Token::If)
+                        .ignore_then(expr.clone())
+                        .then(expr_block.clone())
+                        .then(just(Token::Else).ignore_then(expr_block.clone().or(r#if)).or_not())
+                        .map_with_span(|((cond, then), els), span| {
+                            if let Some(els) = els {
+                                (
+                                    Expr::If {
+                                        cond: Box::new(cond),
+                                        then: Box::new(then),
+                                        els: Some(Box::new(els)),
+                                    },
+                                    span,
+                                )
+                            } else {
+                                (
+                                    Expr::If {
+                                        cond: Box::new(cond),
+                                        then: Box::new(then),
+                                        els: None,
+                                    },
+                                    span,
+                                )
+                            }
+                        })
+                });
 
                 let match_arm = pattern
                     .clone()
@@ -282,6 +289,90 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                             span,
                         )
                     });
+
+                let r#let = just(Token::Let)
+                    .ignore_then(ident)
+                    .then_ignore(just(Token::Colon))
+                    .then(r#type.clone())
+                    .then_ignore(just(Token::Assign))
+                    .then(expr.clone())
+                    .then_ignore(just(Token::Semicolon))
+                    .map_with_span(|((name, ty), rhs), span| {
+                        (
+                            Expr::Let {
+                                name,
+                                ty,
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    });
+
+                let r#return = just(Token::Return)
+                    .ignore_then(expr.clone().or_not())
+                    .then_ignore(just(Token::Semicolon))
+                    .map_with_span(|value, span| {
+                        if let Some(e) = value {
+                            (Expr::Return(Some(Box::new(e))), span)
+                        } else {
+                            (Expr::Return(None), span)
+                        }
+                    });
+
+                let r#while = just(Token::While)
+                    .ignore_then(expr.clone())
+                    .then(expr_block.clone())
+                    .map_with_span(|(cond, body), span| {
+                        (
+                            Expr::While {
+                                cond: Box::new(cond),
+                                body: Box::new(body),
+                            },
+                            span,
+                        )
+                    });
+
+                let r#for = just(Token::For)
+                    .ignore_then(ident)
+                    .then_ignore(just(Token::In))
+                    .then(expr.clone())
+                    .then_ignore(just(Token::To))
+                    .then(expr.clone())
+                    .then(expr_block.clone())
+                    .map_with_span(|(((var, start), end), body), span| {
+                        (
+                            Expr::For {
+                                var,
+                                start: Box::new(start),
+                                end: Box::new(end),
+                                body: Box::new(body),
+                            },
+                            span,
+                        )
+                    });
+
+                let r#break = just(Token::Break)
+                    .then_ignore(just(Token::Semicolon))
+                    .map_with_span(|_tok, span: Span| (Expr::Break, span));
+
+                let assign = ident
+                    .clone()
+                    .then_ignore(just(Token::Assign))
+                    .then(expr.clone())
+                    .then_ignore(just(Token::Semicolon))
+                    .map_with_span(|(name, rhs), span| {
+                        (
+                            Expr::Assign {
+                                name,
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    });
+
+                let r#continue = just(Token::Continue)
+                    .then_ignore(just(Token::Semicolon))
+                    .map_with_span(|_tok, span: Span| (Expr::Continue, span));
 
                 let paren = expr
                     .clone()
@@ -313,7 +404,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     )
                     .then_ignore(just(Token::BitOr))
                     .then(just(Token::Arrow).ignore_then(r#type.clone()).or_not())
-                    .then(block.clone())
+                    .then(expr_block.clone())
                     .map_with_span(|((args, return_ty), body), span: Span| {
                         (
                             Expr::Closure {
@@ -330,10 +421,6 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LParen), just(Token::RParen));
-
-                let expr_block = block
-                    .clone()
-                    .map_with_span(|x, span| (Expr::Block(Box::new(x)), span));
 
                 let callable = choice((
                     var,
@@ -388,19 +475,18 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 
                 let fields = named_fields.or(nameless_fields);
 
-                let ctor =
-                    typed_ctor
-                        .then(fields.or_not())
-                        .map_with_span(|((ty_name, name), fields), span| {
-                            (
-                                Expr::Ctor {
-                                    ty_name,
-                                    name,
-                                    fields,
-                                },
-                                span,
-                            )
-                        });
+                let ctor = typed_ctor.then(fields.or_not()).map_with_span(
+                    |((ty_name, name), fields), span| {
+                        (
+                            Expr::Ctor {
+                                ty_name,
+                                name,
+                                fields,
+                            },
+                            span,
+                        )
+                    },
+                );
 
                 let term = choice((call, lit, var, paren));
 
@@ -440,122 +526,16 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 let binop = unary.pratt(operator);
 
                 choice((
-                    binop, array, tuple, term, ctor, r#if, r#match, expr_block, closure,
+                    binop, array, tuple, term, ctor, r#if, r#match, expr_block, closure, r#let,
+                    r#return, r#while, r#for, r#break, r#continue, assign,
                 ))
             });
-            let stmt_let = just(Token::Let)
-                .ignore_then(ident)
-                .then_ignore(just(Token::Colon))
-                .then(r#type.clone())
-                .then_ignore(just(Token::Assign))
-                .then(expr.clone())
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|((name, ty), rhs), span| {
-                    (
-                        Stmt::Let {
-                            name,
-                            ty,
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    )
-                });
 
-            let stmt_return = just(Token::Return)
-                .ignore_then(expr.clone().or_not())
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|value, span| {
-                    if let Some(e) = value {
-                        (Stmt::Return(Some(Box::new(e))), span)
-                    } else {
-                        (Stmt::Return(None), span)
-                    }
-                });
-            let stmt_while = just(Token::While)
-                .ignore_then(expr.clone())
-                .then(block.clone())
-                .map_with_span(|(cond, body), span| {
-                    (
-                        Stmt::While {
-                            cond: Box::new(cond),
-                            body: Box::new(body),
-                        },
-                        span,
-                    )
-                });
-
-            let stmt_for = just(Token::For)
-                .ignore_then(ident)
-                .then_ignore(just(Token::In))
-                .then(expr.clone())
-                .then_ignore(just(Token::To))
-                .then(expr.clone())
-                .then(block.clone())
-                .map_with_span(|(((var, start), end), body), span| {
-                    (
-                        Stmt::For {
-                            var,
-                            start: Box::new(start),
-                            end: Box::new(end),
-                            body: Box::new(body),
-                        },
-                        span,
-                    )
-                });
-            let stmt_break = just(Token::Break)
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|_tok, span: Span| (Stmt::Break, span));
-
-            let stmt_continue = just(Token::Continue)
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|_tok, span: Span| (Stmt::Continue, span));
-
-            let stmt_assign = ident
-                .clone()
-                .then_ignore(just(Token::Assign))
-                .then(expr.clone())
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|(name, rhs), span| {
-                    (
-                        Stmt::Assign {
-                            name,
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    )
-                });
-            let stmt_expr = expr
-                .clone()
-                .then_ignore(just(Token::Semicolon))
-                .map_with_span(|x, span| (Stmt::Expr(Box::new(x)), span));
-
-            let stmt = choice((
-                stmt_let,
-                stmt_return,
-                stmt_while,
-                stmt_for,
-                stmt_break,
-                stmt_continue,
-                stmt_assign,
-                stmt_expr,
-            ));
-
-            stmt.clone()
+            expr.clone()
                 .repeated()
-                .at_least(1)
                 .collect::<Vec<_>>()
-                .or_not()
-                .then(expr.clone().or_not())
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with_span(|(stmts, value), span| {
-                    (
-                        Block {
-                            stmts,
-                            return_value: value,
-                        },
-                        span,
-                    )
-                })
+                .map_with_span(|exprs, span| (Block(exprs), span))
         },
     );
 
@@ -577,7 +557,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     name,
                     args,
                     return_ty,
-                    body: Box::new(body),
+                    body: Box::new((Expr::Block(body), span)),
                 },
                 span,
             )
@@ -609,7 +589,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
-        .map_with_span(|(name, ctors), span| (Decl::TypeDecl { name, ctors }, span));
+        .map_with_span(|(name, ctors), span| (Decl::EnumDecl { name, ctors }, span));
 
     let decls = choice((r#fn, r#enum));
     let module = decls

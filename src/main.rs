@@ -3,14 +3,14 @@ use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 mod ast;
-mod utils;
 mod parser;
+mod utils;
 
+use ast::typed_ast::module_type_check;
 use ast::*;
-use ast::typed_ast::expr_type_check;
-use utils::error::Span;
 use parser::lexer::lexer;
 use parser::parser;
+use utils::error::Span;
 
 // use rpds::HashTrieMap;
 
@@ -116,22 +116,30 @@ fn main() {
             .into_output_errors();
         if let Some(ast) = ast {
             // println!("{:#?}", ast);
-            println!("{:#?}", AstPrinter::new(ast));
-            Vec::new()
+            // println!("{:#?}", AstPrinter::new(ast));
+            let mut errs = Vec::new();
+            match module_type_check(&ast) {
+                Ok(_) => println!("type check passed"),
+                Err(err) => {
+                    errs.push(err);
+                    // println!("type check failed: {}", err);
+                }
+            }
+            errs.into_iter().map(|e| e.map_token(|tok| tok.to_string())).collect::<Vec<_>>()
         } else {
             parse_errs
+                .into_iter()
+                .map(|e| e.map_token(|tok| tok.to_string()))
+                .collect::<Vec<_>>()
         }
     } else {
         Vec::new()
     };
+
     // let type_check_err = expr_type_check(Expr::Var(("x", (1..2).into()))).unwrap_err();
     errs.into_iter()
         .map(|e| e.map_token(|c| c.to_string()))
-        .chain(
-            parse_errs
-                .into_iter()
-                .map(|e| e.map_token(|tok| tok.to_string())),
-        )
+        .chain(parse_errs.into_iter())
         // .chain(vec![type_check_err].into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
@@ -145,7 +153,4 @@ fn main() {
                 .print(sources([(filename.clone(), src.clone())]))
                 .unwrap()
         });
-    
-    let add = |a: i32, b: i32| -> i32 { a + b };
-
 }
