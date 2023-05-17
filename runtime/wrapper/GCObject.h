@@ -94,7 +94,7 @@ template <typename T, typename K>
 bool isa(K value) {
     static_assert(std::is_pointer<K>::value || std::is_reference<K>::value,
         "require a pointer or a reference type!");
-    if (value->MetaData.Kind == std::remove_pointer<T>::getKind()) 
+    if (value->MetaData.Kind == std::remove_pointer<T>::type::getKind()) 
         return true;
     return false;
 }

@@ -49,17 +49,17 @@ fn main() {
 
     let mut cfg = cc::Build::new();
 
+    rerun_if_changed_anything_in_dir(Path::new("std"));
+    cfg.file("std/io.c");
+
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
-    cfg.file("wrapper/GCMain.cpp")
-        .file("wrapper/Allocator.cpp")
+    cfg.file("wrapper/Allocator.cpp")
         .file("wrapper/Int.cpp")
         .file("wrapper/Float.cpp")
         .file("wrapper/Array.cpp")
-        .target(&target)
-        .host(&host)
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
-        .compile("runtime-wrapper");
+        .compile("libruntime-wrapper_s.a");
 
     let stdcppname = if target.contains("darwin")
         || target.contains("windows-gnullvm")
