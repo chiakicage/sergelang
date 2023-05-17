@@ -1,5 +1,4 @@
 pub mod ast;
-pub mod typed_ast;
 
 pub use ast::*;
 

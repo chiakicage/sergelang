@@ -3,13 +3,14 @@ use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 mod ast;
-mod parser;
+mod frontend;
 mod utils;
+mod midend;
 
-use ast::typed_ast::module_type_check;
+use midend::type_check::module_type_check;
 use ast::*;
-use parser::lexer::lexer;
-use parser::parser;
+use frontend::lexer::lexer;
+use frontend::parser::parser;
 use utils::error::Span;
 
 // use rpds::HashTrieMap;

@@ -7,8 +7,8 @@ pub struct Module<'src> {
 
 #[derive(Debug)]
 pub enum Fields<'src> {
-    NamelessFields(Vec<Spanned<TypeRef<'src>>>),
-    NamedFields(Vec<(Spanned<&'src str>, Spanned<TypeRef<'src>>)>),
+    NamelessFields(Vec<Spanned<TypeStr<'src>>>),
+    NamedFields(Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>)>),
 }
 
 #[derive(Debug)]
@@ -21,8 +21,8 @@ pub struct CtorDecl<'src> {
 pub enum Decl<'src> {
     FuncDecl {
         name: Spanned<&'src str>,
-        args: Vec<(Spanned<&'src str>, Spanned<TypeRef<'src>>)>,
-        return_ty: Option<Spanned<TypeRef<'src>>>,
+        args: Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>)>,
+        return_ty: Option<Spanned<TypeStr<'src>>>,
         body: Box<Spanned<Expr<'src>>>, // only {}
     },
     EnumDecl {
@@ -109,13 +109,13 @@ pub enum Expr<'src> {
         arms: Vec<Spanned<MatchArm<'src>>>,
     },
     Closure {
-        args: Vec<(Spanned<&'src str>, Spanned<TypeRef<'src>>,)>,
-        return_ty: Option<Spanned<TypeRef<'src>>>,
+        args: Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>,)>,
+        return_ty: Option<Spanned<TypeStr<'src>>>,
         body: Box<Spanned<Expr<'src>>>, // only {}
     },
     Let {
         name: Spanned<&'src str>,
-        ty: Spanned<TypeRef<'src>>,
+        ty: Spanned<TypeStr<'src>>,
         rhs: Box<Spanned<Expr<'src>>>,
     },
     While {
@@ -173,10 +173,10 @@ pub enum UnOp {
 }
 
 #[derive(Debug)]
-pub enum TypeRef<'src> {
-    Tuple(Vec<Spanned<TypeRef<'src>>>),
-    Array(Box<Spanned<TypeRef<'src>>>),
+pub enum TypeStr<'src> {
+    Tuple(Vec<Spanned<TypeStr<'src>>>),
+    Array(Box<Spanned<TypeStr<'src>>>),
     Named(Spanned<&'src str>),
-    Func(Vec<Spanned<TypeRef<'src>>>, Box<Spanned<TypeRef<'src>>>),
+    Func(Vec<Spanned<TypeStr<'src>>>, Box<Spanned<TypeStr<'src>>>),
 
 }

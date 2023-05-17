@@ -1,4 +1,4 @@
-use super::ast::*;
+use crate::ast::ast::*;
 use crate::utils::error::{Error, Span, Spanned};
 use crate::utils::types::{Enum, FieldsType, PrimitiveType, Type};
 use rpds::HashTrieMap;
@@ -7,9 +7,9 @@ use std::collections::{HashMap, HashSet};
 type SymTable<K, V> = HashTrieMap<K, V>;
 // type EnumTable = HashMap<String, Enum>;
 
-pub fn convert_type_ref(ty: &TypeRef, ty_table: &SymTable<String, Enum>) -> Result<Type, Error> {
+pub fn convert_type_str(ty: &TypeStr, ty_table: &SymTable<String, Enum>) -> Result<Type, Error> {
     match ty {
-        TypeRef::Named((s, span)) => {
+        TypeStr::Named((s, span)) => {
             let ty = match *s {
                 "int" => Type::Primitive(PrimitiveType::Int),
                 "float" => Type::Primitive(PrimitiveType::Float),
@@ -26,23 +26,23 @@ pub fn convert_type_ref(ty: &TypeRef, ty_table: &SymTable<String, Enum>) -> Resu
             };
             Ok(ty)
         }
-        TypeRef::Func(params, ret) => {
+        TypeStr::Func(params, ret) => {
             let mut param_tys = Vec::new();
             for (t, _) in params {
-                param_tys.push(convert_type_ref(t, ty_table)?);
+                param_tys.push(convert_type_str(t, ty_table)?);
             }
-            let ret = Box::new(convert_type_ref(&ret.0, ty_table)?);
+            let ret = Box::new(convert_type_str(&ret.0, ty_table)?);
             Ok(Type::Func(param_tys, ret))
         }
-        TypeRef::Tuple(tys) => {
+        TypeStr::Tuple(tys) => {
             let mut ret_tys = Vec::new();
             for (t, _) in tys {
-                ret_tys.push(convert_type_ref(t, ty_table)?);
+                ret_tys.push(convert_type_str(t, ty_table)?);
             }
             Ok(Type::Tuple(ret_tys))
         }
-        TypeRef::Array(ty) => {
-            let ty = Box::new(convert_type_ref(&ty.0, ty_table)?);
+        TypeStr::Array(ty) => {
+            let ty = Box::new(convert_type_str(&ty.0, ty_table)?);
             Ok(Type::Array(ty))
         }
     }
@@ -103,12 +103,7 @@ pub fn expr_type_check<'src>(
                 if let Some(new_sym_table_) = new_sym_table_ {
                     new_sym_table = new_sym_table_;
                 }
-                ret_ty = Some(expr_type_check(
-                    expr,
-                    &new_sym_table,
-                    ty_table,
-                    return_ty,
-                )?.0);
+                ret_ty = Some(expr_type_check(expr, &new_sym_table, ty_table, return_ty)?.0);
             }
             match ret_ty {
                 Some(ty) => Ok((ty, None)),
@@ -193,7 +188,9 @@ pub fn expr_type_check<'src>(
             let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?.0;
             match op {
                 UnOp::Neg => match ty_rhs {
-                    Type::Primitive(PrimitiveType::Int) => Ok((Type::Primitive(PrimitiveType::Int), None)),
+                    Type::Primitive(PrimitiveType::Int) => {
+                        Ok((Type::Primitive(PrimitiveType::Int), None))
+                    }
                     Type::Primitive(PrimitiveType::Float) => {
                         Ok((Type::Primitive(PrimitiveType::Float), None))
                     }
@@ -407,8 +404,7 @@ pub fn expr_type_check<'src>(
             let ty_expr = expr_type_check(expr, sym_table, ty_table, return_ty)?.0;
             let mut ty = None;
             for (arm, span) in arms {
-                let sym_table =
-                    pattern_type_check(&arm.pattern, &ty_expr, sym_table, ty_table)?;
+                let sym_table = pattern_type_check(&arm.pattern, &ty_expr, sym_table, ty_table)?;
                 let ty_arm = expr_type_check(&arm.expr, &sym_table, ty_table, return_ty)?.0;
                 if let Some(ty) = ty.clone() {
                     if ty != ty_arm {
@@ -435,13 +431,13 @@ pub fn expr_type_check<'src>(
             let mut sym_table = sym_table.clone();
             let mut args_tys = Vec::new();
             for (name, ty) in args {
-                let ty = convert_type_ref(&ty.0, ty_table)?;
+                let ty = convert_type_str(&ty.0, ty_table)?;
                 args_tys.push(ty.clone());
                 sym_table = sym_table.insert(name.0.to_string(), ty.clone());
             }
             let ty_body = expr_type_check(body, &sym_table, ty_table, return_ty)?.0;
             if let Some(return_ty) = closure_return_ty {
-                let return_ty = convert_type_ref(&return_ty.0, ty_table)?;
+                let return_ty = convert_type_str(&return_ty.0, ty_table)?;
                 if ty_body != return_ty {
                     return Err(Error::custom(
                         body.1,
@@ -459,7 +455,7 @@ pub fn expr_type_check<'src>(
             Ok((Type::Func(args_tys, Box::new(ty_body)), None))
         }
         Expr::Let { name, ty, rhs } => {
-            let ty = convert_type_ref(&ty.0, ty_table)?;
+            let ty = convert_type_str(&ty.0, ty_table)?;
             let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?.0;
             if ty != ty_rhs {
                 return Err(Error::custom(
@@ -486,10 +482,7 @@ pub fn expr_type_check<'src>(
             if ty_body != Type::Primitive(PrimitiveType::Unit) {
                 return Err(Error::custom(
                     body.1,
-                    format!(
-                        "invalid body type, expected no type, got {}",
-                        ty_body
-                    ),
+                    format!("invalid body type, expected no type, got {}", ty_body),
                 ));
             }
             Ok((Type::Primitive(PrimitiveType::Unit), None))
@@ -528,10 +521,7 @@ pub fn expr_type_check<'src>(
             if ty_body != Type::Primitive(PrimitiveType::Unit) {
                 return Err(Error::custom(
                     body.1,
-                    format!(
-                        "invalid body type, expected no type, got {}",
-                        ty_body
-                    ),
+                    format!("invalid body type, expected no type, got {}", ty_body),
                 ));
             }
             Ok((Type::Primitive(PrimitiveType::Unit), None))
@@ -558,16 +548,16 @@ pub fn expr_type_check<'src>(
             let ty_var = if let Some(ty) = sym_table.get(name.0) {
                 Ok(ty.clone())
             } else {
-                Err(Error::custom(span, format!("undefined variable {}", name.0)))
+                Err(Error::custom(
+                    span,
+                    format!("undefined variable {}", name.0),
+                ))
             }?;
             let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?.0;
             if ty_var != ty_rhs {
                 return Err(Error::custom(
                     rhs.1,
-                    format!(
-                        "invalid rhs type, expected {}, got {}",
-                        ty_var, ty_rhs
-                    ),
+                    format!("invalid rhs type, expected {}, got {}", ty_var, ty_rhs),
                 ));
             }
             Ok((Type::Primitive(PrimitiveType::Unit), None))
@@ -730,22 +720,27 @@ pub fn pattern_type_check<'src>(
     }
 }
 
-pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<(), Error> {
+pub fn module_type_check<'src>(
+    module: &Spanned<Module<'src>>,
+) -> Result<(SymTable<String, Type>, SymTable<String, Enum>), Error> {
     let (module, span) = module;
     let mut sym_table: SymTable<String, Type> = SymTable::new();
     let mut ty_table: SymTable<String, Enum> = SymTable::new();
+    let mut fake_ty_table: SymTable<String, Enum> = SymTable::new();
     let is_primitive = |name: &str| match name {
         "int" | "float" | "bool" | "string" | "char" => true,
         _ => false,
     };
     for (decl, span) in &module.decls {
         match decl {
-            
-            Decl::EnumDecl { name, ctors } => {
+            Decl::EnumDecl { name, ctors: _ } => {
                 let enum_name = name.0;
 
-                if ty_table.contains_key(enum_name) {
-                    return Err(Error::custom(name.1, format!("enum {} already defined", enum_name)));
+                if fake_ty_table.contains_key(enum_name) {
+                    return Err(Error::custom(
+                        name.1,
+                        format!("enum {} already defined", enum_name),
+                    ));
                 }
                 if is_primitive(enum_name) {
                     return Err(Error::custom(
@@ -753,11 +748,61 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<(), Err
                         format!("cannot use a primitive type {}", enum_name),
                     ));
                 }
+                fake_ty_table = fake_ty_table.insert(
+                    enum_name.to_string(),
+                    Enum {
+                        name: enum_name.to_string(),
+                        ctors: HashMap::new(),
+                    },
+                );
+            },
+            _ => {}
+        }
+    }
+    for (decl, span) in &module.decls {
+        match decl {
+            Decl::FuncDecl {
+                name,
+                args,
+                return_ty,
+                body,
+            } => {
+                let func_name = name.0;
+                let mut arg_tys = Vec::new();
+                let mut arg_names = Vec::new();
+                for ((name, _), (ty, _)) in args {
+                    let ty = convert_type_str(ty, &fake_ty_table)?;
+                    arg_names.push(name.to_string());
+                    arg_tys.push(ty.clone());
+                }
+
+                let return_ty = match return_ty {
+                    Some((ty, span)) => convert_type_str(ty, &fake_ty_table)?,
+                    None => Type::Primitive(PrimitiveType::Unit),
+                };
+
+                let func_ty = Type::Func(arg_tys, Box::new(return_ty.clone()));
+
+                if sym_table.contains_key(func_name) {
+                    return Err(Error::custom(
+                        name.1,
+                        format!("function {} already defined", func_name),
+                    ));
+                }
+
+                sym_table = sym_table.insert(func_name.to_string(), func_ty.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for (decl, span) in &module.decls {
+        match decl {
+            Decl::EnumDecl { name, ctors } => {
+                let enum_name = name.0;
+
                 let mut ctors_map: HashMap<String, Option<FieldsType>> = HashMap::new();
-                let fake_ty_table = ty_table.insert(enum_name.to_string(), Enum {
-                    name: enum_name.to_string(),
-                    ctors: HashMap::new()
-                });
+                
                 for (ctor, span) in ctors {
                     let ctor_name = ctor.name.0;
                     if ctors_map.contains_key(ctor_name) {
@@ -771,7 +816,7 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<(), Err
                             Fields::NamelessFields(fields) => {
                                 let mut fields_tys = Vec::new();
                                 for (ty, _) in fields {
-                                    let ty = convert_type_ref(ty, &fake_ty_table)?;
+                                    let ty = convert_type_str(ty, &fake_ty_table)?;
                                     fields_tys.push(ty);
                                 }
                                 Some(FieldsType::NamelessFields(fields_tys))
@@ -779,7 +824,7 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<(), Err
                             Fields::NamedFields(fields) => {
                                 let mut fields_tys = HashMap::new();
                                 for (name, (ty, _)) in fields {
-                                    let ty = convert_type_ref(ty, &fake_ty_table)?;
+                                    let ty = convert_type_str(ty, &fake_ty_table)?;
                                     fields_tys.insert(name.0.to_string(), ty);
                                 }
                                 Some(FieldsType::NamedFields(fields_tys))
@@ -794,34 +839,44 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<(), Err
                     ctors: ctors_map,
                 };
                 ty_table = ty_table.insert(enum_name.to_string(), enum_ty);
-            },
+            }
             _ => {}
         }
     }
     for (decl, span) in &module.decls {
         match decl {
-            Decl::FuncDecl { name, args, return_ty, body } => {
+            Decl::FuncDecl {
+                name,
+                args,
+                return_ty,
+                body,
+            } => {
                 let mut func_sym_table = sym_table.clone();
-                let mut arg_tys = Vec::new();
+
                 for ((name, _), (ty, _)) in args {
-                    let ty = convert_type_ref(ty, &ty_table)?;
-                    if *name != "_" {
-                        func_sym_table = func_sym_table.insert(name.to_string(), ty.clone());
-                    }
-                    arg_tys.push(ty.clone());
+                    let ty = convert_type_str(ty, &ty_table)?;
+                    func_sym_table = func_sym_table.insert(name.to_string(), ty.clone());
                 }
 
                 let return_ty = match return_ty {
-                    Some((ty, span)) => convert_type_ref(ty, &ty_table)?,
+                    Some((ty, span)) => convert_type_str(ty, &ty_table)?,
                     None => Type::Primitive(PrimitiveType::Unit),
                 };
-                let func_ty = Type::Func(arg_tys, Box::new(return_ty.clone()));
-                func_sym_table = func_sym_table.insert(name.0.to_string(), func_ty.clone());
+
+
                 let (body_ty, _) = expr_type_check(body, &func_sym_table, &ty_table, &return_ty)?;
-                sym_table = sym_table.insert(name.0.to_string(), func_ty);
-            },
+                if return_ty != body_ty {
+                    return Err(Error::custom(
+                        *span,
+                        format!(
+                            "expected return type {} but found {}",
+                            return_ty, body_ty
+                        ),
+                    ));
+                }
+            }
             _ => {}
         }
     }
-    Ok(())
+    Ok((sym_table, ty_table))
 }

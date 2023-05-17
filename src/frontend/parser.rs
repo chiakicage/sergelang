@@ -1,10 +1,8 @@
-pub mod lexer;
-
 use crate::ast::ast::*;
 use crate::utils::error::{ParserError, Span, Spanned};
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
-use lexer::Token;
+use super::lexer::Token;
 
 #[derive(Clone, Copy, Debug)]
 enum Operator {
@@ -203,12 +201,12 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .allow_trailing()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LParen), just(Token::RParen))
-            .map_with_span(|args, span: Span| (TypeRef::Tuple(args), span));
+            .map_with_span(|args, span: Span| (TypeStr::Tuple(args), span));
         let array = r#type
             .clone()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
-            .map_with_span(|ty, span: Span| (TypeRef::Array(Box::new(ty)), span));
-        let named = ident.map_with_span(|name, span: Span| (TypeRef::Named(name), span));
+            .map_with_span(|ty, span: Span| (TypeStr::Array(Box::new(ty)), span));
+        let named = ident.map_with_span(|name, span: Span| (TypeStr::Named(name), span));
         let func = just(Token::Fn)
             .ignore_then(
                 r#type
@@ -220,7 +218,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             )
             .then_ignore(just(Token::Arrow))
             .then(r#type.clone())
-            .map_with_span(|(args, ret), span| (TypeRef::Func(args, Box::new(ret)), span));
+            .map_with_span(|(args, ret), span| (TypeStr::Func(args, Box::new(ret)), span));
         choice((tuple, array, named, func))
     });
 
