@@ -116,6 +116,7 @@ fn main() {
             )
             .into_output_errors();
         if let Some(ast) = ast {
+            AstWalk(&ast);
             // println!("{:#?}", ast);
             // println!("{:#?}", AstPrinter::new(ast));
             let mut errs = Vec::new();
