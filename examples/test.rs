@@ -18,6 +18,7 @@ fn sub(a: int, b: int) -> int {
 }
 
 fn main() -> int {
+	let z: float = 1.5;
 	let a: int = 1;
 	let b: int = 2;
 	let c: (int, int, int) = (1, 2, 3);
