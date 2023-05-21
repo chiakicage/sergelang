@@ -1,0 +1,8 @@
+[build]
+default-target = "x86_64-unknown-linux-gnu"
+
+
+[target.riscv64-unknown-linux-gnu]
+build-std = false
+xcargo = false
+image = "rustembedded/cross:riscv64gc-unknown-linux-gnu"
