@@ -3,15 +3,31 @@ use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 mod ast;
+mod backend;
 mod frontend;
-mod utils;
 mod midend;
+mod utils;
 
-use midend::type_check::module_type_check;
 use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
+use midend::type_check::module_type_check;
 use utils::error::Span;
+
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Module,
+    targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
+    },
+    OptimizationLevel,
+};
+
+use backend::CodeGen;
+
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 // use rpds::HashTrieMap;
 
@@ -98,6 +114,33 @@ use utils::error::Span;
 //         // _ => unreachable!(),
 //     }
 // }
+fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Output, String> {
+    use std::process::Command;
+    
+    Command::new("clang")
+        .args([
+            "-Wall",
+            "-Werror",
+            "-nostdlib",
+            "-static",
+            "-target",
+            "riscv64-unknown-linux-elf",
+            "-march=rv64imfd",
+            "-mabi=lp64d",
+            "-L/home/cage/Code/PL/sysy-runtime-lib/build",
+            "-lsysy",
+            "-O1",
+            "-fuse-ld=lld",
+
+        ])
+        .arg(input)
+        .arg("-o")
+        .arg(output)
+        // .args([OsStr::new("-Wall -Werror -nostdlib -static -target riscv64-unknown-linux-elf -march=rv64imfd -mabi=lp64d -L/home/cage/Code/PL/sysy-runtime-lib/build -lsysy -O1 -fuse-ld=lld -v"), input.as_os_str(), OsStr::new("-o"), output.as_os_str()])
+        .output()
+        .map_err(|e| e.to_string())
+    
+}
 
 fn main() {
     let filename = std::env::args().nth(1).unwrap();
@@ -126,7 +169,9 @@ fn main() {
                     // println!("type check failed: {}", err);
                 }
             }
-            errs.into_iter().map(|e| e.map_token(|tok| tok.to_string())).collect::<Vec<_>>()
+            errs.into_iter()
+                .map(|e| e.map_token(|tok| tok.to_string()))
+                .collect::<Vec<_>>()
         } else {
             parse_errs
                 .into_iter()
@@ -154,4 +199,81 @@ fn main() {
                 .print(sources([(filename.clone(), src.clone())]))
                 .unwrap()
         });
+
+    let context = Context::create();
+    let module = context.create_module("main");
+    let builder = context.create_builder();
+    let mut output_file = PathBuf::from("build/out.o");
+
+    let codegen = CodeGen::new(&context, &module, &builder);
+    codegen.codegen();
+    codegen.module.print_to_file(output_file.with_extension("ll")).unwrap();
+
+    Target::initialize_riscv(&InitializationConfig::default());
+
+    let triple = TargetTriple::create("riscv64-unknown-linux-gnu");
+    let cpu = String::from("generic");
+    let features = String::from("+a,+c,+f,+m,+d");
+    println!("triple: {}", triple);
+    println!("cpu: {}", cpu);
+    println!("features: {}", features);
+
+
+    let target = Target::from_triple(&triple).unwrap();
+    let target_machine = target
+        .create_target_machine(
+            &triple,
+            &cpu,
+            &features,
+            OptimizationLevel::None,
+            RelocMode::Default,
+            CodeModel::Default,
+        )
+        .unwrap();
+    target_machine
+        .write_to_file(
+            &codegen.module,
+            FileType::Assembly,
+            &output_file.with_extension("s"),
+        )
+        .unwrap();
+
+    target_machine
+        .write_to_file(
+            &codegen.module,
+            FileType::Object,
+            &output_file.with_extension("o"),
+        )
+        .unwrap();
+    let handle_err = |err: String| -> Result<(), ()> {
+        println!("{} {:?}", "::", err.as_str());
+        Err(())
+    };
+    let handle_output = |out: std::process::Output| -> Result<(), ()> {
+        if out.status.success() {
+            println!("{} Try to link the object file", "::");
+        } else {
+            println!("{} Try to link the object file", "::");
+        }
+        let stdout = std::str::from_utf8(out.stdout.as_slice()).unwrap_or_default();
+        let stderr = std::str::from_utf8(out.stderr.as_slice()).unwrap_or_default();
+        if !stderr.is_empty() || !stdout.is_empty() {
+            println!("{} stderr: {} stdout: {}", "::", stderr, stdout);
+            return Err(());
+        }
+        Ok(())
+    };
+    if call_system_linker(
+        &output_file.with_extension("o"),
+        &output_file.with_extension(""),
+    )
+    .map_or_else(handle_err, handle_output)
+    .is_ok()
+    {
+        println!(
+            "{} Write binary file into {:?}",
+            "::",
+            output_file.with_extension("").as_os_str()
+        );
+    }
 }
