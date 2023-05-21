@@ -35,30 +35,30 @@ use crate::utils::error::{Span, Spanned};
 // 	}
 // }
 
-pub fn traverse_type_ref<'src>(typeref : &TypeRef<'src>){
+pub fn traverse_type_str<'src>(TypeStr : &TypeStr<'src>){
     print!("( ");
-    match typeref {
-        TypeRef::Tuple(vecs) => {
-            print!("TypeRef::Tuple : ");
+    match TypeStr {
+        TypeStr::Tuple(vecs) => {
+            print!("TypeStr::Tuple : ");
             for (item, span) in vecs{
-                traverse_type_ref(&item);
+                traverse_type_str(&item);
             }
         }
-        TypeRef::Array(arr) => {
-            print!("TypeRef::Array : ");
-            traverse_type_ref(&arr.0);
+        TypeStr::Array(arr) => {
+            print!("TypeStr::Array : ");
+            traverse_type_str(&arr.0);
             
         }
-        TypeRef::Named(name) => {
-            print!("TypeRef::Named : {:?}", name.0);
+        TypeStr::Named(name) => {
+            print!("TypeStr::Named : {:?}", name.0);
         }
-        TypeRef::Func(vecs, Boxes) => {
+        TypeStr::Func(vecs, Boxes) => {
             print!("TyprRef::Func : ( Vec :");
             for (item, span) in vecs{
-                traverse_type_ref(&item);
+                traverse_type_str(&item);
             }
             print!(" )");
-            traverse_type_ref(&Boxes.0);
+            traverse_type_str(&Boxes.0);
         }
         _ =>{}
     }
@@ -78,13 +78,13 @@ pub fn AstWalk<'src>(module: &Spanned<Module<'src>>)  {
                 print!("( Decl::FuncDecl::args : ");
                 for (str, refs) in args {
                     print!("( {:?} ", str.0);
-                    traverse_type_ref(&refs.0);
+                    traverse_type_str(&refs.0);
                     print!(" )");
                 }
                 print!(")");
                 if let Some(_return_ty) = return_ty {
                     print!("( Decl::FuncDecl::return_ty : ");
-                    traverse_type_ref(&_return_ty.0);
+                    traverse_type_str(&_return_ty.0);
                     print!(")");
                 }
                 print!("( Decl::FuncDecl::body : ");
@@ -104,7 +104,7 @@ pub fn AstWalk<'src>(module: &Spanned<Module<'src>>)  {
                             Fields::NamelessFields(field_ref) => {
                                 print!("( Fields::NamelessFields : ");
                                 for (field_ref_1, span) in field_ref {
-                                    traverse_type_ref(&field_ref_1);
+                                    traverse_type_str(&field_ref_1);
                                 }
                                 print!(" )");
                             }
@@ -112,7 +112,7 @@ pub fn AstWalk<'src>(module: &Spanned<Module<'src>>)  {
                                 print!("( Fields::NamedFields : ");
                                 for (str, refs) in str_refs {
                                     print!("( {:?}  ", str.0);
-                                    traverse_type_ref(&refs.0);
+                                    traverse_type_str(&refs.0);
                                     print!(" )");
                                     // 如果是Some类型的pattern，则需要递归遍历
                                 }
@@ -499,13 +499,13 @@ fn traverse_closure<'src>(closure_expr: &Expr<'src>) {
             for (arg_name, arg_type) in args {
                 // 在这里执行遍历逻辑
                 print!("((arg_name : {:?}) ", &arg_name.0);
-                traverse_type_ref(&arg_type.0);
+                traverse_type_str(&arg_type.0);
                 print!(" )");
             }
             print!(" )");
             if let Some(return_type) = return_ty {
                 print!("( return_ty : ");
-                traverse_type_ref(&return_type.0);
+                traverse_type_str(&return_type.0);
                 print!(" )");
                 // 在这里执行遍历逻辑
             }
@@ -525,7 +525,7 @@ fn traverse_let<'src>(let_expr: &Expr<'src>) {
         Expr::Let { name, ty, rhs } => {
             print!("( name : {:?})", name.0);
             print!("( ty : ");
-            traverse_type_ref(&ty.0);
+            traverse_type_str(&ty.0);
             print!(" )");
             print!("( rhs : ");
             traverse_expr(&rhs);
