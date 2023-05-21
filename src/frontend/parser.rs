@@ -132,6 +132,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     let lit = select! {
         Token::Int(x) => Literal::Int(x),
+        Token::Float(y) => Literal::Float(y),
         // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).(span)
     }
     .labelled("literal");

@@ -61,6 +61,7 @@ pub enum Token<'src> {
     True,
     False,
     Int(i32),
+    Float(f64),
     Str(&'src str),
     Ident(&'src str),
 }
@@ -124,6 +125,7 @@ impl<'src> fmt::Display for Token<'src> {
             Token::Backslash => write!(f, "\\"),
             Token::Underscore => write!(f, "_"),
             Token::Int(i) => write!(f, "{}", i),
+            Token::Float(j) => write!(f, "{}", j),
             Token::Str(s) => write!(f, "{}", s),
             Token::Ident(s) => write!(f, "{}", s),
         }
@@ -197,6 +199,16 @@ pub fn lexer<'src>(
         .from_str::<i32>()
         .unwrapped()
         .map(Token::Int);
+    let float = text::int::<&'src str, char, ParserError<'src, char>>(10)
+        .then_ignore(just("."))
+        .then(text::int::<&'src str, char, ParserError<'src, char>>(10))
+        .map(|(a, b)|{
+            let fl = format!("{}.{}", a.to_owned(), b.to_owned());
+            fl.parse::<f64>()
+            .unwrap()
+        })
+        .map(Token::Float);
+
     let r#str = just('"')
         .ignore_then(none_of('"').repeated())
         .then_ignore(just('"'))
@@ -204,7 +216,7 @@ pub fn lexer<'src>(
 
     let ident = text::ident::<&'src str, char, ParserError<'src, char>>().map(Token::Ident);
 
-    let token = num.or(op).or(keyword).or(ident).or(r#str);
+    let token = float.or(num).or(op).or(keyword).or(ident).or(r#str);
 
     let single_comment = just::<_, &str, ParserError<'src, char>>("//")
         .ignore_then(none_of("\n").repeated())
