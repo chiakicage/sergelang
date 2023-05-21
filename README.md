@@ -5,5 +5,5 @@ Sergelang is a programming language for the final project of the course "Compile
 ## Usage
 ### Run
 ```bash
-cargo run -- examples/test.sgl
+cargo run -- examples/test.rs
 ```
