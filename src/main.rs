@@ -263,17 +263,17 @@ fn main() {
         }
         Ok(())
     };
-    // if call_system_linker(
-    //     &output_file.with_extension("o"),
-    //     &output_file.with_extension(""),
-    // )
-    // .map_or_else(handle_err, handle_output)
-    // .is_ok()
-    // {
-    //     println!(
-    //         "{} Write binary file into {:?}",
-    //         "::",
-    //         output_file.with_extension("").as_os_str()
-    //     );
-    // }
+    if call_system_linker(
+        &output_file.with_extension("o"),
+        &output_file.with_extension(""),
+    )
+    .map_or_else(handle_err, handle_output)
+    .is_ok()
+    {
+        println!(
+            "{} Write binary file into {:?}",
+            "::",
+            output_file.with_extension("").as_os_str()
+        );
+    }
 }
