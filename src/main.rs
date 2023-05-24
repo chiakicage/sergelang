@@ -145,7 +145,13 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
 fn main() {
     let filename = std::env::args().nth(1).unwrap();
     let src = std::fs::read_to_string(&filename).unwrap();
-
+    // let a = 1;
+    // let b = 2;
+    // let a = match (a, b) {
+    //     (1, 2) => { 123 }
+    // };
+    // println!("{}", a);
+    
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
     println!("{:?}", tokens);
@@ -159,12 +165,15 @@ fn main() {
             )
             .into_output_errors();
         if let Some(ast) = ast {
-            AstWalk(&ast);
+            ast_walk(&ast);
             // println!("{:#?}", ast);
             // println!("{:#?}", AstPrinter::new(ast));
             let mut errs = Vec::new();
             match module_type_check(&ast) {
-                Ok(_) => println!("type check passed"),
+                Ok(typed_ast) => {
+                    println!("type check passed");
+                    println!("{:#?}", typed_ast);
+                }
                 Err(err) => {
                     errs.push(err);
                     // println!("type check failed: {}", err);

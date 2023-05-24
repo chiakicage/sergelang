@@ -46,7 +46,9 @@ fn main() -> int {
 	let f: Name = Name::Last { first, last: last };
 	match f {
 		Name::First(a) => a,
-		Name::Last { first, last: (a, b) } => a + b + first,
+		Name::Last { first, last: (1, b) } => a + b + first,
+		Name::Last { first, last: (a, 2) } => c + b + first,
+		
 	}
 
 	for i in 0..10 {

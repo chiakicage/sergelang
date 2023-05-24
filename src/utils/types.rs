@@ -13,7 +13,7 @@ pub enum PrimitiveType {
 
 #[derive(Debug)]
 pub enum FieldsType {
-	NamelessFields(Vec<Type>),
+	UnnamedFields(Vec<Type>),
 	NamedFields(HashMap<String, Type>),
 }
 

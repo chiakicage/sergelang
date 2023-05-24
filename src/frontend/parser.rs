@@ -1,8 +1,8 @@
+use super::lexer::Token;
 use crate::ast::ast::*;
 use crate::utils::error::{ParserError, Span, Spanned};
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use chumsky::{input::SpannedInput, prelude::*, recursive::Direct};
-use super::lexer::Token;
 
 #[derive(Clone, Copy, Debug)]
 enum Operator {
@@ -163,7 +163,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             let nameless_fields = items
                 .clone()
                 .delimited_by(just(Token::LParen), just(Token::RParen))
-                .map(|args| PatternFields::NamelessFields(args));
+                .map(|args| PatternFields::UnnamedFields(args));
 
             let named_fields = ident
                 .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
@@ -470,7 +470,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
                     .map(|fields| ExprFields::NamedFields(fields));
-                let nameless_fields = items.map(|fields| ExprFields::NamelessFields(fields));
+                let nameless_fields = items.map(|fields| ExprFields::UnnamedFields(fields));
 
                 let fields = named_fields.or(nameless_fields);
 
@@ -525,8 +525,8 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 let binop = unary.pratt(operator);
 
                 choice((
-                    ctor, assign, binop, array, tuple, term, r#if, r#match, expr_block, closure, r#let,
-                    r#return, r#while, r#for, r#break, r#continue, 
+                    ctor, assign, binop, array, tuple, term, r#if, r#match, expr_block, closure,
+                    r#let, r#return, r#while, r#for, r#break, r#continue,
                 ))
             });
 
@@ -567,7 +567,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
         .allow_trailing()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen))
-        .map(|fields| Fields::NamelessFields(fields));
+        .map(|fields| Fields::UnnamedFields(fields));
     let named_fields = ident
         .then(just(Token::Colon).ignore_then(r#type.clone()))
         .separated_by(just(Token::Comma))

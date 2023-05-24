@@ -7,7 +7,7 @@ pub struct Module<'src> {
 
 #[derive(Debug)]
 pub enum Fields<'src> {
-    NamelessFields(Vec<Spanned<TypeStr<'src>>>),
+    UnnamedFields(Vec<Spanned<TypeStr<'src>>>),
     NamedFields(Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>)>),
 }
 
@@ -33,7 +33,7 @@ pub enum Decl<'src> {
 
 #[derive(Debug)]
 pub enum PatternFields<'src> {
-    NamelessFields(Vec<Spanned<Pattern<'src>>>),
+    UnnamedFields(Vec<Spanned<Pattern<'src>>>),
     NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Pattern<'src>>>)>),
 }
 
@@ -57,7 +57,7 @@ pub enum ArgsOrIndex<'src> {
 
 #[derive(Debug)]
 pub enum ExprFields<'src> {
-    NamelessFields(Vec<Spanned<Expr<'src>>>),
+    UnnamedFields(Vec<Spanned<Expr<'src>>>),
     NamedFields(Vec<(Spanned<&'src str>, Option<Spanned<Expr<'src>>>)>),
 }
 
