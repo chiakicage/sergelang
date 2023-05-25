@@ -11,4 +11,4 @@
 
 #define alias(name) __attribute__((alias(name)))
 
-void __serge_runtime_panic(const char *msg);
+void __serge_panic(const char *msg);
