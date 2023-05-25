@@ -61,6 +61,8 @@ fn main() {
         .file("wrapper/Int.cpp")
         .file("wrapper/Float.cpp")
         .file("wrapper/Array.cpp")
+        .file("wrapper/Unit.cpp")
+        .file("wrapper/Entry.cpp")
         .includes(&include_dirs)
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
