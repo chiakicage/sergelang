@@ -1,5 +1,6 @@
 use std::env;
 use std::ffi;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -43,9 +44,9 @@ fn output(cmd: &mut Command) -> String {
 
 
 fn main() {
-
-    let target = env::var("TARGET").expect("TARGET was not set");
-    let host = env::var("HOST").expect("HOST was not set");
+    println!("cargo:warning=TARGET is {:?}", env::var("TARGET").unwrap());
+    println!("cargo:warning=HOST is {:?}", env::var("HOST").unwrap());
+    println!("cargo:warning=OUT_DIR is {:?}", env::var("OUT_DIR").unwrap());
 
     let mut cfg = cc::Build::new();
     let include_dirs = vec![Path::new("std"), Path::new("wrapper")];
@@ -64,5 +65,17 @@ fn main() {
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
         .compile("libsergeruntime_s.a");
+
+
+    // Copy gernated static runtime library to runtime folder.
+    // cp ../target/.../deps/.../out/libsergeruntime_s.a ../libsergeruntime_s.a
+    let mut runtime_library_path = PathBuf::new();
+    runtime_library_path.push(env::var("OUT_DIR").unwrap());
+    runtime_library_path.push("libsergeruntime_s.a");
+    let mut output_path = PathBuf::new();
+    output_path.push(env::current_dir().unwrap().parent().unwrap());
+    output_path.push("libsergeruntime_s.a");
+
+    fs::copy(runtime_library_path, output_path).unwrap();
 
 }
