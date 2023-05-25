@@ -9,10 +9,6 @@
 
 
 
-
-
-namespace {
-
 // mark array type object
 static void markArray(GCObjectHandle);
 
@@ -24,6 +20,9 @@ union FreeBlockList {
     GCObjectHandle  Object; 
     FreeBlockList   *Next;
 };
+
+
+namespace {
 
 struct AllocatorImpl {
     // GC roots, the start end of GC process.
@@ -40,9 +39,17 @@ struct AllocatorImpl {
     // process GC object allocation and deallocation    
     void *allocate(size_t n);
     void deallocate(void *);
+
+    // preallocated pools
+    enum PersistentPool : size_t {
+      Unit = 0,
+      SIZE_OF_PERSISTENTPOOL,  
+    };
+
+    void initialize_all();
 };
 
-
+} // end namespace
 
 void markArray(GCObjectHandle Handle) {
     SergeArray *Array = static_cast<SergeArray *>(Handle);
@@ -50,7 +57,6 @@ void markArray(GCObjectHandle Handle) {
         markReachableObject(static_cast<GCObjectHandle *>(Array->DataPtr)[i]);
     }
 }
-
 
 
 void markReachableObject(GCObjectHandle Handle) {
@@ -72,8 +78,6 @@ void markReachableObject(GCObjectHandle Handle) {
         break;
     }
 }
-
-} // end namespace
 
 static AllocatorImpl serge_allocator;
 
@@ -110,13 +114,26 @@ void AllocatorImpl::deallocate(void *ptr) {
     free(ptr);
 }
 
+void AllocatorImpl::initialize_all() {
+    // Unit Object
+    GlobalVariable.reserve(AllocatorImpl::SIZE_OF_PERSISTENTPOOL);
+    SergeUnit *Unit = (SergeUnit *)RawMalloc(sizeof(SergeUnit));
+    Unit->MetaData.Kind = GCMetaData::Unit;
 
+}
+
+extern "C"
+const SergeUnit *__serge_alloc_unit() {
+    return static_cast<SergeUnit *>
+        (serge_allocator.GlobalVariable[AllocatorImpl::Unit]);
+}
 
 // exposed allocator api implementation.
 
 extern "C" 
 void __serge_gc_init(void) {
     /// \todo do some initialization works.
+    serge_allocator.initialize_all();
     return;
 } 
 

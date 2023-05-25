@@ -15,6 +15,7 @@ struct GCMetaData {
         Object = 0,
         Int,
         Float,
+        Unit,
         String,
         Enum,
         Tuple,
@@ -38,12 +39,19 @@ struct GCMetaData {
 
 
 // placeholder GC object metadata
-struct SergeObjectUnit {
+struct SergeObject {
     GCMetaData  MetaData;
     void        *Ptr;
 
     static enum GCMetaData::GCObjectKind 
     getKind() { return GCMetaData::Object; }
+};
+
+struct SergeUnit {
+    GCMetaData MetaData;
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Unit; }
 };
 
 struct SergeInt32 {
@@ -64,7 +72,7 @@ struct SergeFloat64 {
 };
 
 
-struct SeregeString {
+struct SergeString {
     GCMetaData  MetaData;
     uint32_t    Length;
     // Pod string
@@ -87,7 +95,15 @@ struct SergeArray {
 
 typedef void *GCObjectHandle;
 
-#define getMetaData(Handle) (static_cast<SergeObjectUnit *>(Handle)->MetaData)
+#define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
+
+
+// exposed allocaate API
+extern "C" const SergeUnit *__serge_alloc_unit(); 
+extern "C" SergeInt32 *__serge_alloc_i32();
+extern "C" SergeInt32 *__serge_alloc_i32_literal(const int);
+extern "C" SergeFloat64 *__serge_alloc_f64();
+extern "C" SergeFloat64 *__serge_alloc_f64_literal(const double);
 
 
 template <typename T, typename K>
@@ -101,7 +117,7 @@ bool isa(K value) {
 
 template <typename T>
 bool isa(void *ptr) {
-    return isa<T>(static_cast<SergeObjectUnit *>(ptr));
+    return isa<T>(static_cast<SergeObject *>(ptr));
 }
 
 
