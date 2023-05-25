@@ -9,6 +9,7 @@ SergeUnit *__serge_user_main(void);
 
 extern "C"
 int main(int argc, char **argv) {
+    __serge_gc_init();
     __serge_user_main();
     return 0;
 }
