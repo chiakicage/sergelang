@@ -42,19 +42,42 @@ fn output(cmd: &mut Command) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn cpp_flags(compiler: &cc::Tool) -> &'static [&'static str] {
+    if !compiler.is_like_msvc() {
+        static NON_MSVC_FLAGS: &[&str] = &[
+            "-fno-rtti",
+            "-fno-exceptions"
+        ];
+        NON_MSVC_FLAGS
+    } else {
+        static MSVC_FLAGS: &[&str] = &[
+            "/EHsc", // C++ exceptions only, only in C++.
+            "/GR-",  // Disable RTTI.
+        ];
+        MSVC_FLAGS
+    }
+}
 
 fn main() {
-    println!("cargo:warning=TARGET is {:?}", env::var("TARGET").unwrap());
-    println!("cargo:warning=HOST is {:?}", env::var("HOST").unwrap());
-    println!("cargo:warning=OUT_DIR is {:?}", env::var("OUT_DIR").unwrap());
-
+    let target = env::var("TARGET").unwrap();
+    let host = env::var("HOST").unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap();
+    println!("cargo:warning=TARGET is {:?}", target);
+    println!("cargo:warning=HOST is {:?}", host);
+    println!("cargo:warning=OUT_DIR is {:?}", out_dir);
     let mut cfg = cc::Build::new();
+
+    let compiler = cfg.get_compiler();
+    for flag in cpp_flags(&compiler) {
+        cfg.flag(flag);
+    }
+
     let include_dirs = vec![Path::new("std"), Path::new("wrapper")];
+    cfg.includes(include_dirs);    
 
     rerun_if_changed_anything_in_dir(Path::new("std"));
     cfg.file("std/stdcppshim.cpp")
-        .file("std/io.cpp")
-        .includes(&include_dirs);
+        .file("std/io.cpp");
 
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
     cfg.file("wrapper/Allocator.cpp")
@@ -63,16 +86,16 @@ fn main() {
         .file("wrapper/Array.cpp")
         .file("wrapper/Unit.cpp")
         .file("wrapper/Entry.cpp")
-        .includes(&include_dirs)
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
         .compile("libsergeruntime_s.a");
 
 
+
     // Copy gernated static runtime library to runtime folder.
     // cp ../target/.../deps/.../out/libsergeruntime_s.a ../libsergeruntime_s.a
     let mut runtime_library_path = PathBuf::new();
-    runtime_library_path.push(env::var("OUT_DIR").unwrap());
+    runtime_library_path.push(out_dir);
     runtime_library_path.push("libsergeruntime_s.a");
     let mut output_path = PathBuf::new();
     output_path.push(env::current_dir().unwrap().parent().unwrap());
