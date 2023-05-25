@@ -12,10 +12,10 @@ pub fn convert_type_str(ty: &TypeStr, ty_table: &SymTable<String, Enum>) -> Resu
     match ty {
         TypeStr::Named((s, span)) => {
             let ty = match *s {
-                "int" => Type::Primitive(PrimitiveType::Int),
-                "float" => Type::Primitive(PrimitiveType::Float),
+                "i32" => Type::Primitive(PrimitiveType::Int),
+                "f64" => Type::Primitive(PrimitiveType::Float),
                 "bool" => Type::Primitive(PrimitiveType::Bool),
-                "string" => Type::Primitive(PrimitiveType::String),
+                "str" => Type::Primitive(PrimitiveType::String),
                 "char" => Type::Primitive(PrimitiveType::Char),
                 name => {
                     if ty_table.contains_key(name) {
@@ -125,159 +125,443 @@ pub fn if_type_check<'src>(
     })
 }
 
-// TODO: use algorithm in http://moscova.inria.fr/~maranget/papers/warn/warn004.html
-pub fn pattern_exhaustive_check(
+pub fn pattern_ctor_extract(
+    patterns: &Vec<&TypedPattern>,
+    ty: &Type,
+    ty_table: &SymTable<String, Enum>,
+) -> HashMap<String, Vec<Vec<TypedPattern>>> {
+    let mut ret = HashMap::new();
+    if let Type::Named(ty_name) = ty {
+        let ty = ty_table.get(ty_name).unwrap();
+        for (name, fields) in &ty.ctors {
+            if let Some(fields) = fields {
+                let pat_fields = patterns
+                    .iter()
+                    .filter(|p| match p {
+                        TypedPattern::Ctor {
+                            name: ctor_name, ..
+                        } => ctor_name == name,
+                        TypedPattern::Var(_) => true,
+                        _ => false,
+                    })
+                    .map(|p| {
+                        match p {
+                            TypedPattern::Ctor {
+                                fields: pat_fields, ..
+                            } => {
+                                match fields {
+                                    FieldsType::UnnamedFields(tys) => {
+                                        if let TypedPatternFields::UnnamedFields(pat_fields) =
+                                            pat_fields.as_ref().unwrap()
+                                        {
+                                            pat_fields.clone()
+                                        } else {
+                                            unreachable!();
+                                        }
+                                    }
+                                    FieldsType::NamedFields(ctors) => {
+                                        if let TypedPatternFields::NamedFields(pat_fields) =
+                                            pat_fields.as_ref().unwrap()
+                                        {
+                                            // pat_fields.clone()
+                                            let mut new_fields = Vec::new();
+                                            for (field_name, _) in ctors {
+                                                let pat = pat_fields.get(field_name).unwrap();
+                                                if let Some(pat) = &pat.1 {
+                                                    new_fields.push(pat.clone())
+                                                } else {
+                                                    new_fields.push(TypedPattern::Var(
+                                                        TypedVariable {
+                                                            name: name.clone(),
+                                                            ty: pat.0.clone(),
+                                                        },
+                                                    ))
+                                                }
+                                            }
+                                            new_fields
+                                        } else {
+                                            unreachable!();
+                                        }
+                                    }
+                                }
+                            }
+                            TypedPattern::Var(_) => match fields {
+                                FieldsType::UnnamedFields(tys) => tys
+                                    .iter()
+                                    .map(|ty| {
+                                        TypedPattern::Var(TypedVariable {
+                                            name: "_".to_string(),
+                                            ty: ty.clone(),
+                                        })
+                                    })
+                                    .collect::<Vec<_>>(),
+                                FieldsType::NamedFields(ctors) => ctors
+                                    .values()
+                                    .map(|ty| {
+                                        TypedPattern::Var(TypedVariable {
+                                            name: "_".to_string(),
+                                            ty: ty.clone(),
+                                        })
+                                    })
+                                    .collect::<Vec<_>>(),
+                            },
+                            _ => unreachable!(),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                ret.insert(name.clone(), pat_fields);
+            } else {
+                let pat_fields = patterns
+                    .iter()
+                    .filter(|p| match p {
+                        TypedPattern::Ctor {
+                            name: ctor_name, ..
+                        } => ctor_name == name,
+                        TypedPattern::Var(_) => true,
+                        _ => false,
+                    })
+                    .map(|p| match p {
+                        TypedPattern::Ctor { .. } | TypedPattern::Var(_) => Vec::new(),
+                        _ => unreachable!(),
+                    })
+                    .collect::<Vec<Vec<TypedPattern>>>();
+                ret.insert(name.clone(), pat_fields);
+            }
+        }
+    } else {
+        unreachable!();
+    }
+    ret
+}
+
+pub fn pattern_tuple_extract(
+    patterns: &Vec<&TypedPattern>,
+    ty: &Type,
+) -> Vec<Vec<TypedPattern>> {
+    if let Type::Tuple(tys) = ty {
+        return patterns
+            .iter()
+            .map(|p| {
+                if let TypedPattern::Tuple(pat_fields) = p {
+                    pat_fields.clone()
+                } else if let TypedPattern::Var(_) = p {
+                    tys.iter()
+                        .map(|ty| {
+                            TypedPattern::Var(TypedVariable {
+                                name: "_".to_string(),
+                                ty: ty.clone(),
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    unreachable!();
+                }
+            })
+            .collect::<Vec<_>>();
+    } else {
+        unreachable!();
+    }
+}
+
+// use algorithm in http://moscova.inria.fr/~maranget/papers/warn/warn004.html
+
+pub fn pattern_non_exhaustive_check(
     patterns: &Vec<&TypedPattern>,
     ty: &Type,
     ty_table: &SymTable<String, Enum>,
 ) -> bool {
     let has_var = patterns.iter().any(|p| p.is_var());
+    if has_var {
+        return false;
+    }
     match ty {
         Type::Primitive(pri_ty) => match pri_ty {
-            PrimitiveType::Int | PrimitiveType::String | PrimitiveType::Char => {
-                if has_var {
-                    true
-                } else {
-                    false
-                }
-            }
+            PrimitiveType::Int | PrimitiveType::String | PrimitiveType::Char => true,
             PrimitiveType::Bool => {
-                if has_var {
-                    true
-                } else {
-                    let mut set = HashSet::new();
-                    for p in patterns {
-                        if let TypedPattern::Lit(TypedLiteral::Bool(b)) = p {
-                            set.insert(*b);
-                        } else {
-                            unreachable!();
-                        }
-                    }
-                    set.len() == 2
-                }
-            }
-            _ => unreachable!(),
-        },
-        Type::Named(name) => {
-            if has_var {
-                true
-            } else {
                 let mut set = HashSet::new();
-                let ty = ty_table.get(name).unwrap();
-
                 for p in patterns {
-                    if let TypedPattern::Ctor {
-                        ty_name: _,
-                        name,
-                        fields: _,
-                    } = p
-                    {
-                        set.insert(name.clone());
+                    if let TypedPattern::Lit(TypedLiteral::Bool(b)) = p {
+                        set.insert(*b);
                     } else {
                         unreachable!();
                     }
                 }
-                if set.len() != ty.ctors.len() {
-                    return false;
+                set.len() == 2
+            }
+            _ => unreachable!(),
+        },
+        Type::Named(ty_name) => {
+            let mut set = HashSet::new();
+            let ctors = &ty_table.get(ty_name).unwrap().ctors;
+
+            for p in patterns {
+                if let TypedPattern::Ctor { name, .. } = p {
+                    set.insert(name.clone());
+                } else {
+                    unreachable!();
                 }
-                for (name, fields) in &ty.ctors {
-                    let mut pat_fields = Vec::new();
-                    for p in patterns {
-                        if let TypedPattern::Ctor {
-                            ty_name: _,
-                            name: ctor_name,
-                            fields,
-                        } = p
-                        {
-                            if ctor_name == name {
-                                pat_fields.push(fields)
-                            }
-                        } else {
-                            unreachable!();
-                        }
-                    }
+            }
+            if set.len() == ctors.len() {
+                let new_patterns = pattern_ctor_extract(patterns, ty, ty_table);
+                for (name, pats) in new_patterns {
+                    let fields = ctors.get(&name).unwrap();
+                    let new_pats = pats
+                        .iter()
+                        .map(|p| TypedPattern::Tuple(p.clone()))
+                        .collect::<Vec<_>>();
+                    let new_pats = new_pats.iter().collect::<Vec<_>>();
                     if let Some(fields) = fields {
-                        let pat_fields = pat_fields.iter().map(|p| p.as_ref().unwrap()).collect::<Vec<_>>();
                         match fields {
                             FieldsType::UnnamedFields(tys) => {
-                                let pat_fields = pat_fields
-                                    .iter()
-                                    .map(|p| {
-                                        if let TypedPatternFields::UnnamedFields(pat_fields) = p {
-                                            pat_fields
-                                        } else {
-                                            unreachable!();
-                                        }
-                                    })
-                                    .collect::<Vec<_>>();
-                                for i in 0..tys.len() {
-                                    let pats = pat_fields.iter().map(|p| &p[i]).collect::<Vec<_>>();
-                                    if !pattern_exhaustive_check(&pats, &tys[i], ty_table) {
-                                        return false;
-                                    }
+                                let new_ty = Type::Tuple(tys.clone());
+                                if pattern_non_exhaustive_check(&new_pats, &new_ty, ty_table) {
+                                    return true;
                                 }
                             }
                             FieldsType::NamedFields(ctors) => {
-                                let pat_fields = pat_fields
-                                    .iter()
-                                    .map(|p| {
-                                        if let TypedPatternFields::NamedFields(pat_fields) = p {
-                                            pat_fields
-                                        } else {
-                                            unreachable!();
-                                        }
-                                    })
-                                    .collect::<Vec<_>>();
-                                for (name, ty) in ctors {
-                                    let pat_fields = pat_fields
-                                        .iter()
-                                        .map(|p| {
-                                            if let Some(pat) = p.get(name) {
-                                                (name, &pat.0, &pat.1)
-                                            } else {
-                                                unreachable!();
-                                            }
-                                        })
-                                        .collect::<Vec<_>>();
-                                    let has_var =
-                                        pat_fields.iter().any(|(_, _, pat)| pat.is_none());
-                                    if !has_var {
-                                        let pats = pat_fields
-                                            .iter()
-                                            .map(|(_, _, pat)| pat.as_ref().unwrap())
-                                            .collect::<Vec<_>>();
-                                        if !pattern_exhaustive_check(&pats, ty, ty_table) {
-                                            return false;
-                                        }
-                                    }
+                                let new_ty =
+                                    Type::Tuple(ctors.values().cloned().collect::<Vec<_>>());
+                                if pattern_non_exhaustive_check(&new_pats, &new_ty, ty_table) {
+                                    return true;
                                 }
                             }
                         }
                     }
                 }
-                true
+                return false;
             }
+            true
         }
         Type::Tuple(tuple) => {
-            if has_var {
-                true
-            } else {
-                let tuple_pattern = patterns.iter()
+            if tuple.len() == 1 {
+                let new_patterns = patterns
+                    .iter()
                     .map(|p| {
-                        if let TypedPattern::Tuple(pats) = p {
-                            pats
+                        if let TypedPattern::Tuple(p) = p {
+                            p.first().unwrap()
                         } else {
                             unreachable!();
                         }
                     })
                     .collect::<Vec<_>>();
-                for i in 0..tuple.len() {
-                    let pats = tuple_pattern.iter().map(|p| &p[i]).collect::<Vec<_>>();
-                    if !pattern_exhaustive_check(&pats, &tuple[i], ty_table) {
-                        return false;
+                let new_ty = tuple.first().unwrap();
+                return pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table);
+            }
+            let patterns = patterns
+                .iter()
+                .map(|p| {
+                    if let TypedPattern::Tuple(pats) = p {
+                        pats
+                    } else {
+                        unreachable!();
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let first_ty = tuple.first().unwrap();
+            let first_patterns = patterns
+                .iter()
+                .map(|p| p.first().unwrap())
+                .collect::<Vec<_>>();
+
+            match first_ty {
+                Type::Primitive(PrimitiveType::Bool) => {
+                    let mut set = HashSet::new();
+                    for p in first_patterns {
+                        if let TypedPattern::Lit(TypedLiteral::Bool(b)) = p {
+                            set.insert(*b);
+                        } else if let TypedPattern::Var(_) = p {
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                    if set.len() == 2 {
+                        let true_new_patterns = patterns
+                            .iter()
+                            .filter(|p| match p.first().unwrap() {
+                                TypedPattern::Lit(TypedLiteral::Bool(b)) => *b,
+                                TypedPattern::Var(_) => true,
+                                _ => unreachable!(),
+                            })
+                            .map(|p| {
+                                TypedPattern::Tuple(p.iter().skip(1).cloned().collect::<Vec<_>>())
+                            })
+                            .collect::<Vec<_>>();
+                        let false_new_patterns = patterns
+                            .iter()
+                            .filter(|p| match p.first().unwrap() {
+                                TypedPattern::Lit(TypedLiteral::Bool(b)) => !b,
+                                TypedPattern::Var(_) => true,
+                                _ => unreachable!(),
+                            })
+                            .map(|p| {
+                                TypedPattern::Tuple(p.iter().skip(1).cloned().collect::<Vec<_>>())
+                            })
+                            .collect::<Vec<_>>();
+                        let new_ty = Type::Tuple(tuple.iter().skip(1).cloned().collect::<Vec<_>>());
+                        let true_new_patterns = true_new_patterns.iter().collect::<Vec<_>>();
+                        let false_new_patterns = false_new_patterns.iter().collect::<Vec<_>>();
+                        return pattern_non_exhaustive_check(&true_new_patterns, &new_ty, ty_table)
+                            || pattern_non_exhaustive_check(
+                                &false_new_patterns,
+                                &new_ty,
+                                ty_table,
+                            );
+                    } else {
+                        let new_patterns = patterns
+                            .iter()
+                            .filter(|p| match p.first().unwrap() {
+                                TypedPattern::Lit(TypedLiteral::Bool(_)) => false,
+                                TypedPattern::Var(_) => true,
+                                _ => unreachable!(),
+                            })
+                            .map(|p| {
+                                TypedPattern::Tuple(p.iter().skip(1).cloned().collect::<Vec<_>>())
+                            })
+                            .collect::<Vec<_>>();
+                        let new_ty = Type::Tuple(tuple.iter().skip(1).cloned().collect::<Vec<_>>());
+                        let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                        return pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table);
                     }
                 }
-                true
+                Type::Named(ty_name) => {
+                    let mut set = HashSet::new();
+                    let ty = ty_table.get(ty_name).unwrap();
+
+                    for p in &first_patterns {
+                        match p {
+                            TypedPattern::Ctor { name, .. } => {
+                                set.insert(name.clone());
+                            }
+                            TypedPattern::Var(_) => {}
+                            _ => unreachable!(),
+                        }
+                    }
+                    if set.len() == ty.ctors.len() {
+                        let new_first_patterns =
+                            pattern_ctor_extract(&first_patterns, &first_ty, ty_table);
+
+                        let ty = ty_table.get(ty_name).unwrap();
+                        for (name, fields) in &ty.ctors {
+                            let residual_patterns = patterns
+                                .iter()
+                                .filter(|p| match p.first().unwrap() {
+                                    TypedPattern::Ctor {
+                                        name: ctor_name, ..
+                                    } => ctor_name == name,
+                                    TypedPattern::Var(_) => true,
+                                    _ => unreachable!(),
+                                })
+                                .map(|p| p.iter().skip(1).cloned().collect::<Vec<_>>())
+                                .collect::<Vec<_>>();
+                            let new_first_patterns = new_first_patterns.get(name).unwrap();
+                            let new_patterns = new_first_patterns
+                                .iter()
+                                .zip(residual_patterns.iter())
+                                .map(|(first, residual)| {
+                                    TypedPattern::Tuple(
+                                        first
+                                            .iter()
+                                            .chain(residual.iter())
+                                            .cloned()
+                                            .collect::<Vec<_>>(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            if let Some(fields) = fields {
+                                let new_first_tys = match fields {
+                                    FieldsType::UnnamedFields(tys) => tys.clone(),
+                                    FieldsType::NamedFields(fields) => {
+                                        fields.values().cloned().collect::<Vec<_>>()
+                                    }
+                                };
+                                let new_tys = new_first_tys
+                                    .iter()
+                                    .chain(tuple.iter().skip(1))
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let new_ty = Type::Tuple(new_tys);
+                                let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                                if pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table) {
+                                    return true;
+                                }
+                            } else {
+                                let new_ty =
+                                    Type::Tuple(tuple.iter().skip(1).cloned().collect::<Vec<_>>());
+                                let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                                if pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table) {
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    } else {
+                        let new_patterns = patterns
+                            .iter()
+                            .filter(|p| match p.first().unwrap() {
+                                TypedPattern::Var(_) => true,
+                                TypedPattern::Ctor { .. } => false,
+                                _ => unreachable!(),
+                            })
+                            .map(|p| {
+                                TypedPattern::Tuple(p.iter().skip(1).cloned().collect::<Vec<_>>())
+                            })
+                            .collect::<Vec<_>>();
+
+                        let new_ty = Type::Tuple(tuple.iter().skip(1).cloned().collect::<Vec<_>>());
+                        let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                        return pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table);
+                    }
+                }
+                Type::Primitive(PrimitiveType::Char)
+                | Type::Primitive(PrimitiveType::String)
+                | Type::Primitive(PrimitiveType::Int)
+                | Type::Primitive(PrimitiveType::Float) => {
+                    let new_patterns = patterns
+                        .iter()
+                        .filter(|p| match p.first().unwrap() {
+                            TypedPattern::Lit(_) => false,
+                            TypedPattern::Var(_) => true,
+                            _ => unreachable!(),
+                        })
+                        .map(|p| TypedPattern::Tuple(p.iter().skip(1).cloned().collect::<Vec<_>>()))
+                        .collect::<Vec<_>>();
+                    let new_ty = Type::Tuple(tuple.iter().skip(1).cloned().collect::<Vec<_>>());
+                    let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                    return pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table);
+                }
+                Type::Tuple(tys) => {
+                    let new_first_patterns =
+                        pattern_tuple_extract(&first_patterns, &first_ty);
+
+                    let residual_new_patterns = patterns
+                        .iter()
+                        .map(|p| p.iter().skip(1).cloned().collect::<Vec<_>>())
+                        .collect::<Vec<_>>();
+
+                    let new_tys = tys
+                        .iter()
+                        .chain(tuple.iter().skip(1))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let new_ty = Type::Tuple(new_tys);
+                    let new_patterns = new_first_patterns
+                        .iter()
+                        .zip(residual_new_patterns.iter())
+                        .map(|(first, residual)| {
+                            TypedPattern::Tuple(
+                                first
+                                    .iter()
+                                    .chain(residual.iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    let new_patterns = new_patterns.iter().collect::<Vec<_>>();
+                    return pattern_non_exhaustive_check(&new_patterns, &new_ty, ty_table);
+                }
+                _ => unreachable!(),
             }
         }
         _ => unreachable!(),
@@ -451,18 +735,20 @@ pub fn pattern_type_check<'src>(
         }
     }
 }
-pub fn pattern_add_new_var(
+pub fn insert_pattern_symbol_binding(
     pat: &TypedPattern,
     sym_table: &SymTable<String, Type>,
 ) -> SymTable<String, Type> {
     let mut sym_table = sym_table.clone();
     match pat {
         TypedPattern::Var(var) => {
-            sym_table = sym_table.insert(var.name.clone(), var.ty.clone());
+            if var.name != "_" {
+                sym_table = sym_table.insert(var.name.clone(), var.ty.clone());
+            }
         }
         TypedPattern::Tuple(pats) => {
             for pat in pats {
-                sym_table = pattern_add_new_var(pat, &sym_table);
+                sym_table = insert_pattern_symbol_binding(pat, &sym_table);
             }
         }
         TypedPattern::Ctor { fields, .. } => {
@@ -470,13 +756,13 @@ pub fn pattern_add_new_var(
                 match fields {
                     TypedPatternFields::UnnamedFields(pats) => {
                         for pat in pats {
-                            sym_table = pattern_add_new_var(pat, &sym_table);
+                            sym_table = insert_pattern_symbol_binding(pat, &sym_table);
                         }
                     }
                     TypedPatternFields::NamedFields(pats) => {
                         for (name, (ty, pat)) in pats.iter() {
                             if let Some(pat) = pat {
-                                sym_table = pattern_add_new_var(pat, &sym_table);
+                                sym_table = insert_pattern_symbol_binding(pat, &sym_table);
                             } else {
                                 sym_table = sym_table.insert(name.clone(), ty.clone());
                             }
@@ -886,7 +1172,7 @@ pub fn expr_type_check<'src>(
             let mut ty_arms = Vec::new();
             for (arm, _) in arms {
                 let ty_pat = pattern_type_check(&arm.pattern, &ty_expr.ty(), ty_table)?;
-                let new_sym_table = pattern_add_new_var(&ty_pat, sym_table);
+                let new_sym_table = insert_pattern_symbol_binding(&ty_pat, sym_table);
                 let ty_arm = expr_type_check(&arm.expr, &new_sym_table, ty_table, return_ty)?;
                 if let Some(ty) = ty.clone() {
                     if ty != ty_arm.ty() {
@@ -906,15 +1192,9 @@ pub fn expr_type_check<'src>(
                 ty_arms.push(ty_arm);
             }
             if let Some(ty) = ty {
-                let pats = ty_arms
-                    .iter()
-                    .map(|arm| &arm.pattern)
-                    .collect::<Vec<_>>();
-                if !pattern_exhaustive_check(&pats, &ty_expr.ty(), ty_table) {
-                    return Err(Error::custom(
-                        span,
-                        format!("pattern not exhaustive"),
-                    ));
+                let pats = ty_arms.iter().map(|arm| &arm.pattern).collect::<Vec<_>>();
+                if pattern_non_exhaustive_check(&pats, &ty_expr.ty(), ty_table) {
+                    return Err(Error::custom(span, format!("pattern not exhaustive")));
                 }
                 Ok(TypedExpr::Match(TypedMatch {
                     expr: Box::new(ty_expr),

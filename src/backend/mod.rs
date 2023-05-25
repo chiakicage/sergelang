@@ -44,9 +44,11 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         let basic_block = self.context.append_basic_block(fn_value, "entry");
         self.builder.position_at_end(basic_block);
         let const_int = i32_type.const_int(12123, false);
-        self.builder.build_call(putint_fn_value, &[const_int.into()], "");
+        self.builder
+            .build_call(putint_fn_value, &[const_int.into()], "");
         let enter_int = i32_type.const_int(10, false);
-        self.builder.build_call(putch_fn_value, &[enter_int.into()], "");
+        self.builder
+            .build_call(putch_fn_value, &[enter_int.into()], "");
 
         self.builder.build_return(Some(&const_int));
     }

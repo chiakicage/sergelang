@@ -240,7 +240,11 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     just(Token::If)
                         .ignore_then(expr.clone())
                         .then(expr_block.clone())
-                        .then(just(Token::Else).ignore_then(expr_block.clone().or(r#if)).or_not())
+                        .then(
+                            just(Token::Else)
+                                .ignore_then(expr_block.clone().or(r#if))
+                                .or_not(),
+                        )
                         .map_with_span(|((cond, then), els), span| {
                             if let Some(els) = els {
                                 (

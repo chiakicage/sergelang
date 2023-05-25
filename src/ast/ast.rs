@@ -87,8 +87,8 @@ pub enum Expr<'src> {
 
     If {
         cond: Box<Spanned<Expr<'src>>>,
-        then: Box<Spanned<Expr<'src>>>, // only if {} 
-        els: Option<Box<Spanned<Expr<'src>>>>, // only else {} or else if 
+        then: Box<Spanned<Expr<'src>>>,        // only if {}
+        els: Option<Box<Spanned<Expr<'src>>>>, // only else {} or else if
     },
 
     Call {
@@ -109,7 +109,7 @@ pub enum Expr<'src> {
         arms: Vec<Spanned<MatchArm<'src>>>,
     },
     Closure {
-        args: Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>,)>,
+        args: Vec<(Spanned<&'src str>, Spanned<TypeStr<'src>>)>,
         return_ty: Option<Spanned<TypeStr<'src>>>,
         body: Box<Spanned<Expr<'src>>>, // only {}
     },
@@ -148,7 +148,6 @@ pub enum Literal<'src> {
 #[derive(Debug)]
 pub struct Block<'src>(pub Vec<Spanned<Expr<'src>>>);
 
-
 #[derive(Debug, Clone)]
 pub enum BinOp {
     Add,
@@ -178,5 +177,4 @@ pub enum TypeStr<'src> {
     Array(Box<Spanned<TypeStr<'src>>>),
     Named(Spanned<&'src str>),
     Func(Vec<Spanned<TypeStr<'src>>>, Box<Spanned<TypeStr<'src>>>),
-
 }

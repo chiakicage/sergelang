@@ -1,5 +1,5 @@
 pub mod ast;
-pub mod utils;
+pub mod backend;
 pub mod frontend;
 pub mod midend;
-pub mod backend;
+pub mod utils;
