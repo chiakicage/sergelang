@@ -6,7 +6,7 @@
 /// \brief Runtime exposed Array object manipulate API
 
 extern "C"
-SergeArray *__serge_runtime_alloc_array(size_t capacity) {
+SergeArray *__serge_alloc_array(const size_t capacity) {
     size_t init_capacity = std::max(capacity, (size_t)4);
     auto ptr = static_cast<SergeArray *>(GCMalloc(sizeof(SergeArray)));
 
@@ -19,18 +19,18 @@ SergeArray *__serge_runtime_alloc_array(size_t capacity) {
 }
 
 extern "C"
-size_t __serge_runtime_array_length(SergeArray *array) {
+size_t __serge_array_length(const SergeArray *array) {
     return array->Length;
 }
 
 extern "C"
-GCObjectHandle __serge_runtime_array_index(SergeArray *array, SergeInt32 *index) {
+GCObjectHandle __serge_array_index(const SergeArray *array, const SergeInt32 *index) {
     auto raw_index = index->Data;
     return static_cast<GCObjectHandle *>(array->DataPtr)[raw_index];
 }
 
 extern "C"
-void __serge_runtime_array_push_back(SergeArray *array, GCObjectHandle value) {
+void __serge_array_push_back(SergeArray *array, GCObjectHandle value) {
     if (array->Length == array->Capacity) {
         // grow up array
         size_t old_capacity = array->Capacity;

@@ -96,7 +96,7 @@ void AllocatorImpl::sweep() {
 void *AllocatorImpl::allocate(size_t n) {
     void *ptr = calloc(1, n);
     if (unlikely(ptr == nullptr)) {
-        __serge_runtime_panic("allocator failed");
+        __serge_panic("allocator failed");
     }    
     return ptr;
 }
@@ -115,18 +115,18 @@ void AllocatorImpl::deallocate(void *ptr) {
 // exposed allocator api implementation.
 
 extern "C" 
-void __serge_runtime_gc_init(void) {
+void __serge_gc_init(void) {
     /// \todo do some initialization works.
     return;
 } 
 
 extern "C"
-void *__serge_runtime_alloc(size_t size) {
+void *__serge_alloc(size_t size) {
     return serge_allocator.allocate(size);
 }
 
 extern "C"
-void __serge_runtime_free(void *ptr) {
+void __serge_free(void *ptr) {
     serge_allocator.deallocate(ptr);
 }
 
@@ -138,8 +138,8 @@ void __serge_gc_collect(void) {
     serge_allocator.mark();
 }
 
-void *GCMalloc(size_t) alias("__serge_runtime_alloc");
-void GCFree(void *ptr) alias("__serge_runtime_free");
+void *GCMalloc(size_t) alias("__serge_alloc");
+void GCFree(void *ptr) alias("__serge_free");
 
 /// \todo: we expect allocator API with GC has an internal generation optimization in the future,
 /// raw allocator API manages raw data buffers. This alias is a work-around now.
