@@ -48,15 +48,19 @@ fn main() {
     let host = env::var("HOST").expect("HOST was not set");
 
     let mut cfg = cc::Build::new();
+    let include_dirs = vec![Path::new("std"), Path::new("wrapper")];
 
     rerun_if_changed_anything_in_dir(Path::new("std"));
-    cfg.file("std/stdcppshim.cpp");
+    cfg.file("std/stdcppshim.cpp")
+        .file("std/io.cpp")
+        .includes(&include_dirs);
 
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
     cfg.file("wrapper/Allocator.cpp")
         .file("wrapper/Int.cpp")
         .file("wrapper/Float.cpp")
         .file("wrapper/Array.cpp")
+        .includes(&include_dirs)
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
         .compile("libsergeruntime_s.a");

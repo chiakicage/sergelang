@@ -11,4 +11,5 @@
 
 #define alias(name) __attribute__((alias(name)))
 
+extern "C"
 void __serge_panic(const char *msg);
