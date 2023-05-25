@@ -50,7 +50,7 @@ fn main() {
     let mut cfg = cc::Build::new();
 
     rerun_if_changed_anything_in_dir(Path::new("std"));
-    cfg.file("std/io.c");
+    cfg.file("std/stdcppshim.cpp");
 
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
     cfg.file("wrapper/Allocator.cpp")
@@ -59,28 +59,6 @@ fn main() {
         .file("wrapper/Array.cpp")
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
-        .compile("libruntime-wrapper_s.a");
-
-    let stdcppname = if target.contains("darwin")
-        || target.contains("windows-gnullvm")
-    {
-        "c++"
-    } else {
-        "stdc++"
-    };
-
-    // C++ runtime library
-    // as our runtime is written by C++, it currently rely on C++ runtime
-    if !target.contains("msvc") {
-        println!("cargo:rustc-link-lib={stdcppname}");
-        // TODO: cross compile to riscv/arm or remove c++ runtime"
-    }
-
-
-    // Libstdc++ depends on pthread which Rust doesn't link on MinGW
-    // since nothing else requires it.
-    if target.ends_with("windows-gnu") {
-        println!("cargo:rustc-static-link-lib=static:-bundle=pthread");
-    }
+        .compile("libsergeruntime_s.a");
 
 }
