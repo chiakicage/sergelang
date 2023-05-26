@@ -115,6 +115,17 @@ typedef void *GCObjectHandle;
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
 
 
+/// Runtime API. When we enter a new domain, e.g. a new function,
+/// this will create a new root for the current program space.
+/// @TODO
+extern "C"
+void __serge_create_gc_root(void);
+
+//// Runtime API, should be paired with `__serge_drop_gc_root`,
+/// collect unused object created between create and drop gc root.
+/// @TODO
+extern "C"
+void __serge_drop_gc_root(void);
 
 template <typename T, typename K>
 bool isa(K value) {

@@ -1,7 +1,9 @@
 
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <sys/types.h>
 #include <vector>
 #include "Utility.h"
 #include "GCObject.h"
@@ -10,8 +12,6 @@
 
 
 
-// mark array type object
-static void markArray(GCObjectHandle);
 
 // main iteration of mark alive objects
 static void markReachableObject(GCObjectHandle);
@@ -52,10 +52,22 @@ struct AllocatorImpl {
 
 } // end namespace
 
-void markArray(GCObjectHandle Handle) {
+// mark array type object
+static void markArray(GCObjectHandle Handle) {
     SergeArray *Array = static_cast<SergeArray *>(Handle);
-    for (uint32_t i = 0; i < Array->Length; ++i) {
-        markReachableObject(static_cast<GCObjectHandle *>(Array->DataPtr)[i]);
+    GCObjectHandle *Data = (GCObjectHandle *)Array->DataPtr;
+    int Length = Array->Length;
+    for (uint32_t i = 0; i < Length; ++i) {
+        markReachableObject(Data[i]);
+    }
+}
+
+// mark tuple type object
+void markTuple(GCObjectHandle Handle) {
+    SergeTuple *Tuple = static_cast<SergeTuple *>(Handle);
+    int Length = Tuple->Length;
+    for (uint32_t i = 0; i < Length; ++i) {
+        markReachableObject(Tuple->Fields[i]);
     }
 }
 
@@ -68,13 +80,19 @@ void markReachableObject(GCObjectHandle Handle) {
 
     MetaData.Mark = 1;
     switch (MetaData.Kind) {
+    // plain of data type, do nothing.
     case GCMetaData::Int:
-        break;
     case GCMetaData::Float:
+    case GCMetaData::Unit:
         break;
-    case GCMetaData::Array:
+    case GCMetaData::Array: {
         markArray(Handle);
         break;
+    }
+    case GCMetaData::Tuple: {
+        markTuple(Handle);
+        break;
+    }
     default:
         break;
     }
@@ -84,7 +102,8 @@ static AllocatorImpl serge_allocator;
 
 void AllocatorImpl::mark() {
     for (auto Root : GlobalVariable) {
-        GCMetaData &MetaData = getMetaData(Root);
+        // mark all root variables reachable.
+        getMetaData(Root).Mark = 1;
         markReachableObject(Root);
     }
 }
@@ -150,6 +169,12 @@ extern "C"
 void __serge_free(void *ptr) {
     serge_allocator.deallocate(ptr);
 }
+
+extern "C"
+void __serge_create_gc_root(void) {}
+
+extern "C"
+void __serge_drop_gc_root(void) {}
 
 /// runtime C ffi, triger GC manually
 /// we expect do full gc (all generation) by default.
