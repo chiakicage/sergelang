@@ -12,7 +12,7 @@ SergeTuple *__serge_alloc_tuple(int n) {
 }
 
 extern "C"
-const SergeTuple *__serge_make_tuple(int n, ...) {
+SergeTuple *__serge_make_tuple(int n, ...) {
     GCObjectHandle Handle;
     va_list args;
     va_start(args, n);

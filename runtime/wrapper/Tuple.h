@@ -6,7 +6,7 @@
 #include <cstdarg>
 
 extern "C"
-const SergeTuple *__serge_make_tuple(int n, ...);
+SergeTuple *__serge_make_tuple(int n, ...);
 
 
 extern "C"

@@ -78,6 +78,13 @@ void serge_debug_dump_object(GCObjectHandle Handle) {
                         "(array) {size = %d, capacity = %d, ptr = %p}\n", size, capacity, data);
             break;
         }
+        case GCMetaData::Tuple: {
+            auto Tuple = (SergeTuple *)Handle;
+            int size = Tuple->Length;
+            GCObjectHandle *data = Tuple->Fields;
+            fprintf(stderr, 
+                "(tuple) {size = %d, field = %p}\n", size, data);
+        }
         default:
             __serge_panic("Unhandled print object!");
     }    
@@ -112,9 +119,20 @@ void print_object_internal(GCObjectHandle Handle) {
             printf("[");
             for (int index = 0; index < size; ++index) {
                 print_object_internal(data[index]);
-                printf(",");
+                printf(", ");
             }
-            printf("]\n");
+            printf("]");
+            break;
+        }
+        case GCMetaData::Tuple: {
+            auto Tuple = (SergeTuple *)Handle;
+            int size = Tuple->Length;
+            printf("(");
+            for (int index = 0; index < size; ++index) {
+                print_object_internal(Tuple->Fields[index]);
+                printf(", ");
+            }
+            printf(")");
             break;
         }
         default:
