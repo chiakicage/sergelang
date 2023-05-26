@@ -12,6 +12,11 @@
 
 
 
+<<<<<<< HEAD
+=======
+// mark array type object
+static void markArray(GCObjectHandle);
+>>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 
 // main iteration of mark alive objects
 static void markReachableObject(GCObjectHandle);
@@ -70,7 +75,6 @@ void markTuple(GCObjectHandle Handle) {
         markReachableObject(Tuple->Fields[i]);
     }
 }
-
 
 void markReachableObject(GCObjectHandle Handle) {
     GCMetaData &MetaData = getMetaData(Handle);
@@ -142,9 +146,15 @@ void AllocatorImpl::initialize_all() {
     GlobalVariable.reserve(AllocatorImpl::SIZE_OF_PERSISTENTPOOL);
     SergeUnit *Unit = (SergeUnit *)RawMalloc(sizeof(SergeUnit));
     Unit->MetaData.Kind = GCMetaData::Unit;
+<<<<<<< HEAD
 
 }
 
+=======
+
+}
+
+>>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 extern "C"
 const SergeUnit *__serge_alloc_unit() {
     return static_cast<SergeUnit *>

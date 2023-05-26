@@ -75,11 +75,19 @@ struct SergeFloat64 {
 struct SergeBool {
     GCMetaData  MetaData;
     bool        Data;
+<<<<<<< HEAD
 
     static enum GCMetaData::GCObjectKind
     getKind() { return GCMetaData::Bool; }
 };
 
+=======
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Bool; }
+};
+
+>>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 struct SergeString {
     GCMetaData  MetaData;
     uint32_t    Length;
@@ -114,12 +122,15 @@ typedef void *GCObjectHandle;
 
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
 
+<<<<<<< HEAD
 
 /// Runtime API. When we enter a new domain, e.g. a new function,
 /// this will create a new root for the current program space.
 /// @TODO
 extern "C"
 void __serge_create_gc_root(void);
+=======
+>>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 
 //// Runtime API, should be paired with `__serge_drop_gc_root`,
 /// collect unused object created between create and drop gc root.
