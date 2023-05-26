@@ -8,7 +8,7 @@ fn gcd(a: i32, b: i32) -> i32 {
 
 enum Name {
     First(i32),
-    Last { first: i32, last: (i32, i32) },
+    Last { first: i32, last: (Name, i32) },
 }
 
 enum List {

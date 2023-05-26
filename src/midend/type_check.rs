@@ -1,53 +1,14 @@
 use super::typed_ast::*;
 use crate::ast::ast::*;
 use crate::utils::error::{Error, Span, Spanned};
-use crate::utils::types::{Enum, FieldsType, PrimitiveType, Type};
+use crate::utils::type_context::{Enum, FieldsType, PrimitiveType, Type, TypeRef, TypeContext};
 use rpds::HashTrieMap;
 use std::collections::{HashMap, HashSet};
 
 type SymTable<K, V> = HashTrieMap<K, V>;
 // type EnumTable = HashMap<String, Enum>;
 
-pub fn convert_type_str(ty: &TypeStr, ty_table: &SymTable<String, Enum>) -> Result<Type, Error> {
-    match ty {
-        TypeStr::Named((s, span)) => {
-            let ty = match *s {
-                "i32" => Type::Primitive(PrimitiveType::Int),
-                "f64" => Type::Primitive(PrimitiveType::Float),
-                "bool" => Type::Primitive(PrimitiveType::Bool),
-                "str" => Type::Primitive(PrimitiveType::String),
-                "char" => Type::Primitive(PrimitiveType::Char),
-                name => {
-                    if ty_table.contains_key(name) {
-                        Type::Named(name.to_string())
-                    } else {
-                        return Err(Error::custom(*span, format!("undefined type {}", name)));
-                    }
-                }
-            };
-            Ok(ty)
-        }
-        TypeStr::Func(params, ret) => {
-            let mut param_tys = Vec::new();
-            for (t, _) in params {
-                param_tys.push(convert_type_str(t, ty_table)?);
-            }
-            let ret = Box::new(convert_type_str(&ret.0, ty_table)?);
-            Ok(Type::Func(param_tys, ret))
-        }
-        TypeStr::Tuple(tys) => {
-            let mut ret_tys = Vec::new();
-            for (t, _) in tys {
-                ret_tys.push(convert_type_str(t, ty_table)?);
-            }
-            Ok(Type::Tuple(ret_tys))
-        }
-        TypeStr::Array(ty) => {
-            let ty = Box::new(convert_type_str(&ty.0, ty_table)?);
-            Ok(Type::Array(ty))
-        }
-    }
-}
+/*
 pub fn literal_type_check<'src>(lit: &Literal<'src>) -> Result<TypedLiteral, Error> {
     match lit {
         Literal::Int(i) => Ok(TypedLiteral::Int(*i)),
@@ -1456,77 +1417,75 @@ pub fn func_type_check<'src>(
 
 pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedModule, Error> {
     let (module, _) = module;
-    let mut sym_table: SymTable<String, Type> = SymTable::new();
-    let mut ty_table: SymTable<String, Enum> = SymTable::new();
-    let mut fake_ty_table: SymTable<String, Enum> = SymTable::new();
-    let is_primitive = |name: &str| match name {
-        "int" | "float" | "bool" | "string" | "char" => true,
-        _ => false,
-    };
+    let mut ty_ctx: TypeContext = Default::default();
+    let mut sym_table: SymTable<String, TypeRef> = SymTable::new();
+    let mut enum_set = HashSet::new();
+
+    // let is_primitive = |name: &str| match name {
+    //     "i32" | "float" | "bool" | "string" | "char" => true,
+    //     _ => false,
+    // };
+
     for (decl, _) in &module.decls {
         match decl {
-            Decl::EnumDecl { name, ctors: _ } => {
+            Decl::EnumDecl { name, .. } => {
                 let enum_name = name.0;
 
-                if fake_ty_table.contains_key(enum_name) {
+                if enum_set.contains_key(enum_name) {
                     return Err(Error::custom(
                         name.1,
                         format!("enum {} already defined", enum_name),
                     ));
                 }
-                if is_primitive(enum_name) {
+                if enum_name.chars().next().unwrap().is_lowercase() {
                     return Err(Error::custom(
                         name.1,
-                        format!("cannot use a primitive type {}", enum_name),
+                        "enum name must start with an uppercase letter".to_string(),
                     ));
                 }
-                fake_ty_table = fake_ty_table.insert(
-                    enum_name.to_string(),
-                    Enum {
-                        name: enum_name.to_string(),
-                        ctors: HashMap::new(),
-                    },
-                );
+                enum_set.insert(enum_name.to_string());
+
+                ty_ctx.add_opaque(enum_name.to_string());
             }
             _ => {}
         }
     }
-    for (decl, _) in &module.decls {
-        match decl {
-            Decl::FuncDecl {
-                name,
-                args,
-                return_ty,
-                body: _,
-            } => {
-                let func_name = name.0;
-                let mut arg_tys = Vec::new();
-                let mut arg_names = Vec::new();
-                for ((name, _), (ty, _)) in args {
-                    let ty = convert_type_str(ty, &fake_ty_table)?;
-                    arg_names.push(name.to_string());
-                    arg_tys.push(ty.clone());
-                }
+    // for (decl, _) in &module.decls {
+    //     match decl {
+    //         Decl::FuncDecl {
+    //             name,
+    //             args,
+    //             return_ty,
+    //             body: _,
+    //         } => {
+    //             let func_name = name.0;
+    //             let mut arg_tys = Vec::new();
+    //             let mut arg_names = Vec::new();
+    //             for ((name, _), (ty, _)) in args {
+    //                 let ty = convert_type_str(ty, &fake_ty_table)?;
+    //                 arg_names.push(name.to_string());
+    //                 arg_tys.push(ty.clone());
+    //             }
 
-                let return_ty = match return_ty {
-                    Some((ty, _)) => convert_type_str(ty, &fake_ty_table)?,
-                    None => Type::Primitive(PrimitiveType::Unit),
-                };
+    //             let return_ty = match return_ty {
+    //                 Some((ty, _)) => convert_type_str(ty, &fake_ty_table)?,
+    //                 None => Type::Primitive(PrimitiveType::Unit),
+    //             };
 
-                let func_ty = Type::Func(arg_tys, Box::new(return_ty.clone()));
+    //             let func_ty = Type::Func(arg_tys, Box::new(return_ty.clone()));
 
-                if sym_table.contains_key(func_name) {
-                    return Err(Error::custom(
-                        name.1,
-                        format!("function {} already defined", func_name),
-                    ));
-                }
+    //             if sym_table.contains_key(func_name) {
+    //                 return Err(Error::custom(
+    //                     name.1,
+    //                     format!("function {} already defined", func_name),
+    //                 ));
+    //             }
 
-                sym_table = sym_table.insert(func_name.to_string(), func_ty.clone());
-            }
-            _ => {}
-        }
-    }
+    //             sym_table = sym_table.insert(func_name.to_string(), func_ty.clone());
+    //         }
+    //         _ => {}
+    //     }
+    // }
 
     for (decl, _) in &module.decls {
         match decl {
@@ -1537,6 +1496,12 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
 
                 for (ctor, span) in ctors {
                     let ctor_name = ctor.name.0;
+                    if ctor_name.chars().next().unwrap().is_lowercase() {
+                        return Err(Error::custom(
+                            *span,
+                            "enum name must start with an uppercase letter".to_string(),
+                        ));
+                    }
                     if ctors_map.contains_key(ctor_name) {
                         return Err(Error::custom(
                             *span,
@@ -1548,7 +1513,7 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
                             Fields::UnnamedFields(fields) => {
                                 let mut fields_tys = Vec::new();
                                 for (ty, _) in fields {
-                                    let ty = convert_type_str(ty, &fake_ty_table)?;
+                                    let ty = ty_ctx.convert_type_str(ty)?;
                                     fields_tys.push(ty);
                                 }
                                 Some(FieldsType::UnnamedFields(fields_tys))
@@ -1582,41 +1547,42 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
         }
     }
     let mut func_defs = Vec::new();
-    for (decl, _) in &module.decls {
-        match decl {
-            Decl::FuncDecl {
-                name,
-                args,
-                return_ty,
-                body,
-            } => {
-                let mut params = Vec::new();
-                for ((name, _), (ty, _)) in args {
-                    let ty = convert_type_str(ty, &ty_table)?;
-                    params.push((name.to_string(), ty));
-                }
+    // for (decl, _) in &module.decls {
+    //     match decl {
+    //         Decl::FuncDecl {
+    //             name,
+    //             args,
+    //             return_ty,
+    //             body,
+    //         } => {
+    //             let mut params = Vec::new();
+    //             for ((name, _), (ty, _)) in args {
+    //                 let ty = convert_type_str(ty, &ty_table)?;
+    //                 params.push((name.to_string(), ty));
+    //             }
 
-                let return_ty = match return_ty {
-                    Some((ty, _)) => convert_type_str(ty, &ty_table)?,
-                    None => Type::Primitive(PrimitiveType::Unit),
-                };
+    //             let return_ty = match return_ty {
+    //                 Some((ty, _)) => convert_type_str(ty, &ty_table)?,
+    //                 None => Type::Primitive(PrimitiveType::Unit),
+    //             };
 
-                let func = func_type_check(
-                    name.0.to_string(),
-                    params,
-                    &return_ty,
-                    body,
-                    &sym_table,
-                    &ty_table,
-                )?;
-                func_defs.push(func);
-            }
-            _ => {}
-        }
-    }
+    //             let func = func_type_check(
+    //                 name.0.to_string(),
+    //                 params,
+    //                 &return_ty,
+    //                 body,
+    //                 &sym_table,
+    //                 &ty_table,
+    //             )?;
+    //             func_defs.push(func);
+    //         }
+    //         _ => {}
+    //     }
+    // }
     Ok(TypedModule {
         func_table: sym_table,
-        enum_table: ty_table,
+        ty_ctx,
         func_defs,
     })
 }
+*/

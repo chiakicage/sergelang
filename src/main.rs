@@ -11,7 +11,7 @@ mod utils;
 use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
-use midend::type_check::module_type_check;
+use midend::typed_ast::TypedModule;
 use utils::error::Span;
 
 use inkwell::{
@@ -167,10 +167,10 @@ fn main() {
             // println!("{:#?}", ast);
             // println!("{:#?}", AstPrinter::new(ast));
             let mut errs = Vec::new();
-            match module_type_check(&ast) {
+            match TypedModule::create_from_ast(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
-                    // println!("{:#?}", typed_ast);
+                    println!("{:#?}", typed_ast);
                 }
                 Err(err) => {
                     errs.push(err);
