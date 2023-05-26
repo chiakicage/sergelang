@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 use std::fmt;
 
-use crate::utils::error::{ParserError, Span, Spanned};
+use crate::utils::error::{ParserError, Spanned};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
@@ -57,7 +57,7 @@ pub enum Token<'src> {
     Arrow,
     DArrow,
     Backslash,
-    Underscore,
+    // Underscore,
     True,
     False,
     Int(i32),
@@ -123,7 +123,7 @@ impl<'src> fmt::Display for Token<'src> {
             Token::Arrow => write!(f, "->"),
             Token::DArrow => write!(f, "=>"),
             Token::Backslash => write!(f, "\\"),
-            Token::Underscore => write!(f, "_"),
+            // Token::Underscore => write!(f, "_"),
             Token::Int(i) => write!(f, "{}", i),
             Token::Float(j) => write!(f, "{}", j),
             Token::Str(s) => write!(f, "{}", s),
@@ -175,7 +175,7 @@ pub fn lexer<'src>(
         just('.').to(Token::Dot),
         just(':').to(Token::Colon),
         just('\\').to(Token::Backslash),
-        just('_').to(Token::Underscore),
+        // just('_').to(Token::Underscore),
     ]));
     let keyword = choice([
         text::keyword("if").to(Token::If),
@@ -202,10 +202,9 @@ pub fn lexer<'src>(
     let float = text::int::<&'src str, char, ParserError<'src, char>>(10)
         .then_ignore(just("."))
         .then(text::int::<&'src str, char, ParserError<'src, char>>(10))
-        .map(|(a, b)|{
+        .map(|(a, b)| {
             let fl = format!("{}.{}", a.to_owned(), b.to_owned());
-            fl.parse::<f64>()
-            .unwrap()
+            fl.parse::<f64>().unwrap()
         })
         .map(Token::Float);
 

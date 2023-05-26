@@ -2,8 +2,8 @@ pub mod ast;
 
 pub use ast::*;
 
-use std::fmt;
-use crate::utils::error::{Span, Spanned};
+use crate::utils::error::Spanned;
+// use std::fmt;
 
 // type SpannedExpr<'src> = Spanned<Expr<'src>>;
 
@@ -35,45 +35,46 @@ use crate::utils::error::{Span, Spanned};
 // 	}
 // }
 
-pub fn traverse_type_str<'src>(TypeStr : &TypeStr<'src>){
+pub fn traverse_type_str<'src>(type_str: &TypeStr<'src>) {
     print!("( ");
-    match TypeStr {
+    match type_str {
         TypeStr::Tuple(vecs) => {
             print!("TypeStr::Tuple : ");
-            for (item, span) in vecs{
+            for (item, _) in vecs {
                 traverse_type_str(&item);
             }
         }
         TypeStr::Array(arr) => {
             print!("TypeStr::Array : ");
             traverse_type_str(&arr.0);
-            
         }
         TypeStr::Named(name) => {
             print!("TypeStr::Named : {:?}", name.0);
         }
-        TypeStr::Func(vecs, Boxes) => {
+        TypeStr::Func(vecs, return_ty) => {
             print!("TyprRef::Func : ( Vec :");
-            for (item, span) in vecs{
+            for (item, _) in vecs {
                 traverse_type_str(&item);
             }
             print!(" )");
-            traverse_type_str(&Boxes.0);
+            traverse_type_str(&return_ty.0);
         }
-        _ =>{}
     }
     print!(" )");
 }
 
-
-
-pub fn AstWalk<'src>(module: &Spanned<Module<'src>>)  {
+pub fn ast_walk<'src>(module: &Spanned<Module<'src>>) {
     print!("\n");
-    let (ast, span) = module.clone();
-    for (decl, span) in &ast.decls {
+    let (ast, _) = module.clone();
+    for (decl, _) in &ast.decls {
         print!("(");
         match decl {
-            Decl::FuncDecl{name, args, return_ty, body} => {
+            Decl::FuncDecl {
+                name,
+                args,
+                return_ty,
+                body,
+            } => {
                 print!("( Decl::FuncDecl::name : ({:?}))", name.0);
                 print!("( Decl::FuncDecl::args : ");
                 for (str, refs) in args {
@@ -91,19 +92,19 @@ pub fn AstWalk<'src>(module: &Spanned<Module<'src>>)  {
                 traverse_body(body);
                 print!(")");
             }
-            Decl::EnumDecl{name, ctors} => {
+            Decl::EnumDecl { name, ctors } => {
                 print!("( Decl::EnumDecl::name : ({:?}) )", name.0);
                 print!("( Decl::EnumDecl::ctors : ");
-                for (ctor, span) in ctors {
+                for (ctor, _) in ctors {
                     let _name = ctor.name.0;
                     print!("( CtorDecl::name : ({:?}) )", _name);
                     if let Some(fields) = &ctor.fields {
                         // 遍历fields
                         print!("( CtorDecl::fields : ");
                         match fields {
-                            Fields::NamelessFields(field_ref) => {
+                            Fields::UnnamedFields(field_ref) => {
                                 print!("( Fields::NamelessFields : ");
-                                for (field_ref_1, span) in field_ref {
+                                for (field_ref_1, _) in field_ref {
                                     traverse_type_str(&field_ref_1);
                                 }
                                 print!(" )");
@@ -139,64 +140,88 @@ pub fn traverse_expr<'src>(expr: &Spanned<Expr<'src>>) {
         Expr::Array(array) => {
             traverse_array(&array);
         }
-        Expr::Assign { name: (name), rhs: (rhs) } => {
+        Expr::Assign { name: _, rhs: _ } => {
             traverse_assign(&expr.0);
         }
-        Expr::BinOpExpr { lhs, op, rhs } => {
+        Expr::BinOpExpr {
+            lhs: _,
+            op: _,
+            rhs: _,
+        } => {
             traverse_binop_expr(&expr.0);
         }
-        Expr::Block((block)) => {
+        Expr::Block(block) => {
             traverse_block(&block);
         }
         Expr::Break => {
             print!("(Expr::Break)");
         }
-        Expr::Call { func: (func), args: (args) } => {
+        Expr::Call { func: _, args: _ } => {
             traverse_call(&expr.0);
         }
-        Expr::Closure { args, return_ty, body } => {
+        Expr::Closure {
+            args: _,
+            return_ty: _,
+            body: _,
+        } => {
             traverse_closure(&expr.0);
         }
         Expr::Continue => {
             print!("(Expr::Continue)");
         }
-        Expr::Ctor { ty_name, name, fields } => {
+        Expr::Ctor {
+            ty_name: _,
+            name: _,
+            fields: _,
+        } => {
             traverse_ctor_expr(&expr.0);
         }
-        Expr::For { var: (var), start: (start), end: (end), body: (body) } => {
+        Expr::For {
+            var: _,
+            start: _,
+            end: _,
+            body: _,
+        } => {
             traverse_for(&expr.0);
         }
-        Expr::If { cond, then, els } => {
+        Expr::If {
+            cond: _,
+            then: _,
+            els: _,
+        } => {
             traverse_if(&expr.0);
         }
-        Expr::Index { array: (array), index: (index) } => {
+        Expr::Index { array: _, index: _ } => {
             traverse_index(&expr.0);
         }
-        Expr::Let { name, ty, rhs } => {
+        Expr::Let {
+            name: _,
+            ty: _,
+            rhs: _,
+        } => {
             traverse_let(&expr.0);
         }
-        Expr::Lit((lit)) => {
+        Expr::Lit(lit) => {
             traverse_literal(&lit);
         }
-        Expr::Match { expr, arms } => {
+        Expr::Match { expr: _, arms: _ } => {
             traverse_match(&expr.0);
         }
-        Expr::Return((return_opt)) => {
+        Expr::Return(_) => {
             traverse_return_opt_expr(&expr.0);
         }
-        Expr::Tuple((tuple)) => {
+        Expr::Tuple(tuple) => {
             traverse_tuple_expr(&tuple);
         }
-        Expr::UnOpExpr { op, rhs } => {
+        Expr::UnOpExpr { op: _, rhs: _ } => {
             traverse_unop_expr(&expr.0);
         }
-        Expr::Var((var)) => {
+        Expr::Var(var) => {
             traverse_var(&var);
         }
-        Expr::While { cond, body } => {
+        Expr::While { cond: _, body: _ } => {
             traverse_while(&expr.0);
         }
-        _ => {}
     }
 }
 
@@ -236,8 +261,8 @@ fn traverse_array<'src>(array: &Vec<Spanned<Expr<'src>>>) {
 fn traverse_block<'src>(block: &Spanned<Block<'src>>) {
     // 在这里执行遍历逻辑
     print!("( Expr::Block : ");
-    let BLOCK = &block.0;
-    for sub_block in &BLOCK.0 {
+    let block = &block.0;
+    for sub_block in &block.0 {
         traverse_expr(&sub_block);
     }
     print!(" )");
@@ -258,25 +283,23 @@ fn traverse_binop_expr<'src>(binop_expr: &Expr<'src>) {
                 BinOp::Mul => print!("(*)"),
                 BinOp::Div => print!("(/)"),
                 BinOp::Mod => print!("(%)"),
-                BinOp::Eq  => print!("(==)"),
+                BinOp::Eq => print!("(==)"),
                 BinOp::Neq => print!("(!=)"),
-                BinOp::Lt  => print!("(<)"),
-                BinOp::Gt  => print!("(>)"),
+                BinOp::Lt => print!("(<)"),
+                BinOp::Gt => print!("(>)"),
                 BinOp::Lte => print!("(<=)"),
                 BinOp::Gte => print!("(>=)"),
                 BinOp::And => print!("(&)"),
-                BinOp::Or  => print!("(|)"),
+                BinOp::Or => print!("(|)"),
             }
             print!(" )");
             print!("( rhs : ");
             traverse_expr(&rhs);
             print!(" )");
-
         }
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_unop_expr<'src>(unop_expr: &Expr<'src>) {
@@ -296,7 +319,7 @@ fn traverse_unop_expr<'src>(unop_expr: &Expr<'src>) {
         }
         _ => {}
     }
-    
+
     // 在这里执行遍历逻辑
     print!(" )");
 }
@@ -326,7 +349,6 @@ fn traverse_if<'src>(if_expr: &Expr<'src>) {
         _ => {}
     }
     print!(")");
-    
 }
 
 fn traverse_call<'src>(call_expr: &Expr<'src>) {
@@ -345,7 +367,6 @@ fn traverse_call<'src>(call_expr: &Expr<'src>) {
         _ => {}
     }
     print!(")");
-    
 }
 
 fn traverse_index<'src>(index_expr: &Expr<'src>) {
@@ -362,19 +383,22 @@ fn traverse_index<'src>(index_expr: &Expr<'src>) {
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_ctor_expr<'src>(ctor_expr: &Expr<'src>) {
     print!("( Expr::Ctor : ");
     // 在这里执行遍历逻辑
     match ctor_expr {
-        Expr::Ctor { ty_name, name, fields } => {
+        Expr::Ctor {
+            ty_name,
+            name,
+            fields,
+        } => {
             print!("( ty_name : ({:?})) ( name : ({:?}))", ty_name.0, name.0);
             if let Some(fields) = fields {
                 print!("( Exprfields : ");
                 match fields {
-                    ExprFields::NamelessFields(namelessfields) => {
+                    ExprFields::UnnamedFields(namelessfields) => {
                         print!("( NamelessFields : ");
                         for field in namelessfields {
                             traverse_expr(&field);
@@ -400,7 +424,6 @@ fn traverse_ctor_expr<'src>(ctor_expr: &Expr<'src>) {
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_pattern<'src>(pattern: &Spanned<Pattern<'src>>) {
@@ -423,7 +446,11 @@ fn traverse_pattern<'src>(pattern: &Spanned<Pattern<'src>>) {
             }
             print!(" )");
         }
-        Pattern::Ctor { ty_name, name, fields } => {
+        Pattern::Ctor {
+            ty_name,
+            name,
+            fields,
+        } => {
             print!("( Pattern::Ctor : ");
             print!("( ty_name : {:?} )", ty_name.0);
             print!("( name : {:?} )", name.0);
@@ -432,26 +459,24 @@ fn traverse_pattern<'src>(pattern: &Spanned<Pattern<'src>>) {
                     PatternFields::NamedFields(patterns) => {
                         print!("( NamedFields : ");
                         for pattern in patterns {
-                            print!("(name : {:?})", pattern.0.0);
+                            print!("(name : {:?})", pattern.0 .0);
                             if let Some(_pattern) = &pattern.1 {
                                 traverse_pattern(&_pattern);
                             }
                         }
                         print!(" )");
                     }
-                    PatternFields::NamelessFields(patterns) => {
+                    PatternFields::UnnamedFields(patterns) => {
                         print!("( NamelessFields : ");
                         for pattern in patterns {
                             traverse_pattern(&pattern);
                         }
                         print!(" )");
                     }
-                    _ => {}
                 }
             }
             print!(" )");
         }
-        _ => {}
     }
     print!(" )");
 }
@@ -485,16 +510,18 @@ fn traverse_match<'src>(match_expr: &Expr<'src>) {
         }
         _ => {}
     }
-    
-    
+
     print!(" )");
 }
 
 fn traverse_closure<'src>(closure_expr: &Expr<'src>) {
     print!("(Expr::Closure : ");
     match closure_expr {
-
-        Expr::Closure { args, return_ty, body } => {
+        Expr::Closure {
+            args,
+            return_ty,
+            body,
+        } => {
             print!("( args : ");
             for (arg_name, arg_type) in args {
                 // 在这里执行遍历逻辑
@@ -516,7 +543,6 @@ fn traverse_closure<'src>(closure_expr: &Expr<'src>) {
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_let<'src>(let_expr: &Expr<'src>) {
@@ -551,13 +577,17 @@ fn traverse_while<'src>(while_expr: &Expr<'src>) {
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_for<'src>(for_expr: &Expr<'src>) {
     print!("( Expr::For : ");
     match for_expr {
-        Expr::For { var, start, end, body } => {
+        Expr::For {
+            var: _,
+            start,
+            end,
+            body,
+        } => {
             print!("( start :");
             traverse_expr(&start);
             print!(" )");
@@ -587,7 +617,6 @@ fn traverse_return_opt_expr<'src>(return_opt_expr: &Expr<'src>) {
         _ => {}
     }
     print!(" )");
-    
 }
 
 fn traverse_assign<'src>(assign_expr: &Expr<'src>) {

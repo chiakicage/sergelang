@@ -10,3 +10,4 @@ ariadne = "0.2.0"
 chumsky = { git="https://github.com/chiakicage/chumsky", features=["regex", "label"] }
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm15-0"] }
 rpds = "0.13.0"
+serge_runtime = { path = "runtime", version = "0.1.0" }

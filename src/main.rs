@@ -116,7 +116,7 @@ use std::path::{Path, PathBuf};
 // }
 fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Output, String> {
     use std::process::Command;
-    
+
     Command::new("clang")
         .args([
             "-Wall",
@@ -131,7 +131,6 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
             "-lsysy",
             "-O1",
             "-fuse-ld=lld",
-
         ])
         .arg(input)
         .arg("-o")
@@ -139,12 +138,17 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
         // .args([OsStr::new("-Wall -Werror -nostdlib -static -target riscv64-unknown-linux-elf -march=rv64imfd -mabi=lp64d -L/home/cage/Code/PL/sysy-runtime-lib/build -lsysy -O1 -fuse-ld=lld -v"), input.as_os_str(), OsStr::new("-o"), output.as_os_str()])
         .output()
         .map_err(|e| e.to_string())
-    
 }
 
 fn main() {
     let filename = std::env::args().nth(1).unwrap();
     let src = std::fs::read_to_string(&filename).unwrap();
+    // let a = 1;
+    // let b = 2;
+    // let a = match (a, b) {
+    //     (1, 2) => { 123 }
+    // };
+    // println!("{}", a);
 
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
@@ -159,12 +163,15 @@ fn main() {
             )
             .into_output_errors();
         if let Some(ast) = ast {
-            AstWalk(&ast);
+            ast_walk(&ast);
             // println!("{:#?}", ast);
             // println!("{:#?}", AstPrinter::new(ast));
             let mut errs = Vec::new();
             match module_type_check(&ast) {
-                Ok(_) => println!("type check passed"),
+                Ok(typed_ast) => {
+                    println!("type check passed");
+                    // println!("{:#?}", typed_ast);
+                }
                 Err(err) => {
                     errs.push(err);
                     // println!("type check failed: {}", err);
@@ -208,7 +215,10 @@ fn main() {
 
     let codegen = CodeGen::new(&context, &module, &builder);
     codegen.codegen();
-    codegen.module.print_to_file(output_file.with_extension("ll")).unwrap();
+    codegen
+        .module
+        .print_to_file(output_file.with_extension("ll"))
+        .unwrap();
 
     Target::initialize_riscv(&InitializationConfig::default());
 
@@ -218,7 +228,6 @@ fn main() {
     println!("triple: {}", triple);
     println!("cpu: {}", cpu);
     println!("features: {}", features);
-
 
     let target = Target::from_triple(&triple).unwrap();
     let target_machine = target
@@ -264,17 +273,17 @@ fn main() {
         }
         Ok(())
     };
-    // if call_system_linker(
-    //     &output_file.with_extension("o"),
-    //     &output_file.with_extension(""),
-    // )
-    // .map_or_else(handle_err, handle_output)
-    // .is_ok()
-    // {
-    //     println!(
-    //         "{} Write binary file into {:?}",
-    //         "::",
-    //         output_file.with_extension("").as_os_str()
-    //     );
-    // }
+    if call_system_linker(
+        &output_file.with_extension("o"),
+        &output_file.with_extension(""),
+    )
+    .map_or_else(handle_err, handle_output)
+    .is_ok()
+    {
+        println!(
+            "{} Write binary file into {:?}",
+            "::",
+            output_file.with_extension("").as_os_str()
+        );
+    }
 }
