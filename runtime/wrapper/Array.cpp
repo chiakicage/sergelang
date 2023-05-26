@@ -1,5 +1,6 @@
 #include "GCObject.h"
 #include "Allocator.h"
+#include "Utility.h"
 #include <cstring>
 #include <algorithm>
 
@@ -25,8 +26,18 @@ int __serge_array_length(const SergeArray *array) {
 
 extern "C"
 GCObjectHandle __serge_array_index(const SergeArray *array, const int index) {
+    if (array->Length < index)
+        __serge_panic("array index exceeded!");
     return static_cast<GCObjectHandle *>(array->DataPtr)[index];
 }
+
+extern "C"
+void __serge_array_write_index(SergeArray *array, const int index, const GCObjectHandle value) {
+    if (array->Length < index)
+        __serge_panic("array index exceeded!");
+    static_cast<GCObjectHandle *>(array->DataPtr)[index] = value;
+}
+
 
 extern "C"
 void __serge_array_push_back(SergeArray *array, GCObjectHandle value) {
