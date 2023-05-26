@@ -12,11 +12,6 @@
 
 
 
-<<<<<<< HEAD
-=======
-// mark array type object
-static void markArray(GCObjectHandle);
->>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 
 // main iteration of mark alive objects
 static void markReachableObject(GCObjectHandle);
