@@ -141,15 +141,9 @@ void AllocatorImpl::initialize_all() {
     GlobalVariable.reserve(AllocatorImpl::SIZE_OF_PERSISTENTPOOL);
     SergeUnit *Unit = (SergeUnit *)RawMalloc(sizeof(SergeUnit));
     Unit->MetaData.Kind = GCMetaData::Unit;
-<<<<<<< HEAD
 
 }
 
-=======
-
-}
-
->>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 extern "C"
 const SergeUnit *__serge_alloc_unit() {
     return static_cast<SergeUnit *>

@@ -75,19 +75,11 @@ struct SergeFloat64 {
 struct SergeBool {
     GCMetaData  MetaData;
     bool        Data;
-<<<<<<< HEAD
 
     static enum GCMetaData::GCObjectKind
     getKind() { return GCMetaData::Bool; }
 };
 
-=======
-
-    static enum GCMetaData::GCObjectKind
-    getKind() { return GCMetaData::Bool; }
-};
-
->>>>>>> c214281e4abdb8933fc830aadb1d8fca2f5e346f
 struct SergeString {
     GCMetaData  MetaData;
     uint32_t    Length;
