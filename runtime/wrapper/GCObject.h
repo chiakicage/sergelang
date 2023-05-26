@@ -98,13 +98,6 @@ typedef void *GCObjectHandle;
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
 
 
-// exposed allocaate API
-extern "C" const SergeUnit *__serge_alloc_unit(); 
-extern "C" SergeInt32 *__serge_alloc_i32();
-extern "C" SergeInt32 *__serge_alloc_i32_literal(const int);
-extern "C" SergeFloat64 *__serge_alloc_f64();
-extern "C" SergeFloat64 *__serge_alloc_f64_literal(const double);
-
 
 template <typename T, typename K>
 bool isa(K value) {

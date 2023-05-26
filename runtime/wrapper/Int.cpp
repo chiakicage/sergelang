@@ -1,5 +1,6 @@
 #include "GCObject.h"
 #include "Allocator.h"
+#include "Int.h"
 
 /// \brief Runtime exposed Int object manipulate API
 

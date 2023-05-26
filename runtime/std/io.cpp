@@ -2,6 +2,9 @@
 #include <cstdlib>
 #include "GCObject.h"
 #include "Utility.h"
+#include "Unit.h"
+#include "Int.h"
+#include "Float.h"
 
 
 namespace {
@@ -16,13 +19,13 @@ __serge_panic(const char *msg) {
 }
 
 extern "C"
-const SergeUnit *print(const GCObjectHandle Handle) {
+const SergeUnit *__serge_print(const GCObjectHandle Handle) {
     print_object_internal(Handle);
     return __serge_alloc_unit();
 }
 
 extern "C"
-const SergeUnit *println(const GCObjectHandle Handle) {
+const SergeUnit *__serge_println(const GCObjectHandle Handle) {
     print_object_internal(Handle);
     printf("\n");
     return __serge_alloc_unit();
