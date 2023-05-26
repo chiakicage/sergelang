@@ -15,6 +15,7 @@ struct GCMetaData {
         Object = 0,
         Int,
         Float,
+        Bool,
         Unit,
         String,
         Enum,
@@ -71,6 +72,13 @@ struct SergeFloat64 {
     getKind() { return GCMetaData::Float; }
 };
 
+struct SergeBool {
+    GCMetaData  MetaData;
+    bool        Data;
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Bool; }
+};
 
 struct SergeString {
     GCMetaData  MetaData;

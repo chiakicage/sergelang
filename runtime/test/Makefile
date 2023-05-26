@@ -10,6 +10,8 @@ all: Int
 Int-test: Int.cpp
 	$(CC) $^ -o $@ $(INCLUDES) $(LIBS)
 
+Array-test: Array.cpp
+	$(CC) $^ -o $@ $(INCLUDES) $(LIBS)
 
 .PHONY: clean
 clean:

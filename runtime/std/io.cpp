@@ -33,14 +33,14 @@ const SergeUnit *__serge_println(const GCObjectHandle Handle) {
 
 
 extern "C"
-const SergeInt32 *__serge_read_i32() {
+SergeInt32 *__serge_read_i32() {
     int value = 0;
     scanf("%d", &value);
     return __serge_alloc_i32_literal(value);
 }
 
 extern "C"
-const SergeFloat64 *__serge_read_f64() {
+SergeFloat64 *__serge_read_f64() {
     double value = 0.0;
     scanf("%lf", &value);
     return __serge_alloc_f64_literal(value);
@@ -67,6 +67,18 @@ void print_object_internal(GCObjectHandle Handle) {
         case GCMetaData::Float: {
             auto Float = (SergeFloat64 *)Handle;
             printf("%f", Float->Data);
+            break;
+        }
+        case GCMetaData::Array: {
+            auto Array = (SergeArray *)Handle;
+            int size = Array->Length;
+            GCObjectHandle *data = (GCObjectHandle *)Array->DataPtr;
+            printf("[");
+            for (int index = 0; index < size; ++index) {
+                print_object_internal(data[index]);
+                printf(",");
+            }
+            printf("]\n");
             break;
         }
         default:
