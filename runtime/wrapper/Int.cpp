@@ -30,3 +30,10 @@ SergeInt32 *__serge_f64cvtf32(const SergeFloat64 *obj) {
     double value = obj->Data;
     return __serge_alloc_i32_literal(static_cast<int>(value));
 }
+
+extern "C"
+SergeInt32 *__serge_increase_i32(SergeInt32 *obj) {
+    obj->Data++;
+    return obj;
+}
+
