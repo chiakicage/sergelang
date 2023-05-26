@@ -13,3 +13,10 @@
 
 extern "C"
 void __serge_panic(const char *msg);
+
+#ifndef NDEBUG
+#define SERGE_DEBUG(x) do {x} while(0)
+#else
+#define 
+#define SERGE_DEBUG(x) {}
+#endif

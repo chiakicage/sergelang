@@ -5,10 +5,11 @@
 #include "Unit.h"
 #include "Int.h"
 #include "Float.h"
+#include "io.h"
 
 
 namespace {
-void print_object_internal(GCObjectHandle);
+void print_object_internal(GCObjectHandle Handle);
 }
 
 
@@ -46,6 +47,41 @@ SergeFloat64 *__serge_read_f64() {
     return __serge_alloc_f64_literal(value);
 }
 
+
+void serge_debug_dump_object(GCObjectHandle Handle) {
+    switch (((SergeObject *)Handle)->MetaData.Kind) {
+        case GCMetaData::Unit: {
+            printf("()");
+            break;
+        }
+        case GCMetaData::String: {
+            auto Str = (SergeString *)Handle;
+            // TODO
+            break;
+        }
+        case GCMetaData::Int: {
+            auto Int = (SergeInt32 *)Handle;
+            fprintf(stderr, "(int) {data = %d}\n", Int->Data);
+            break;
+        }
+        case GCMetaData::Float: {
+            auto Float = (SergeFloat64 *)Handle;
+            fprintf(stderr, "(float) {data = %f}\n", Float->Data);
+            break;
+        }
+        case GCMetaData::Array: {
+            auto Array = (SergeArray *)Handle;
+            int size = Array->Length;
+            int capacity = Array->Capacity;
+            GCObjectHandle *data = (GCObjectHandle *)Array->DataPtr;
+            fprintf(stderr, 
+                        "(array) {size = %d, capacity = %d, ptr = %p}\n", size, capacity, data);
+            break;
+        }
+        default:
+            __serge_panic("Unhandled print object!");
+    }    
+}
 
 namespace {
 void print_object_internal(GCObjectHandle Handle) {

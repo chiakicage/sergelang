@@ -101,6 +101,15 @@ struct SergeArray {
     getKind() { return GCMetaData::Array; }
 };
 
+struct SergeTuple {
+    GCMetaData  MetaData;
+    uint32_t    Length;
+    void        *Fields[0];
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Tuple; }
+};
+
 typedef void *GCObjectHandle;
 
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
