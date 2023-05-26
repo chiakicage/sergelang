@@ -1,16 +1,8 @@
 
 #include "GCObject.h"
-
-extern "C"
-int __serge_extract_i32(const SergeInt32 *obj);
-extern "C"
-double __serge_extract_f64(const SergeFloat64 *obj);
-extern "C"
-const SergeInt32 *__serge_read_i32();
-extern "C"
-const SergeFloat64 *__serge_read_f64();
-extern "C"
-const SergeUnit *println(const GCObjectHandle Handle);
+#include "Int.h"
+#include "Unit.h"
+#include "io.h"
 
 extern "C"
 SergeUnit *__serge_user_main() {
@@ -21,7 +13,7 @@ SergeUnit *__serge_user_main() {
     int _sum = _a + _b;
     SergeInt32 *sum = __serge_alloc_i32_literal(_sum);
 
-    println(sum);
+    __serge_println(sum);
     SergeUnit *unit = (SergeUnit *)__serge_alloc_unit();
     return unit;
 }
