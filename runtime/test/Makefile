@@ -13,6 +13,9 @@ Int-test: Int.cpp
 Array-test: Array.cpp
 	$(CC) $^ -o $@ $(INCLUDES) $(LIBS)
 
+Tuple-test: Tuple.cpp
+	$(CC) $^ -o $@ $(INCLUDES) $(LIBS)
+
 .PHONY: clean
 clean:
 	rm -rf *-test

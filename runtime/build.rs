@@ -84,6 +84,7 @@ fn main() {
         .file("wrapper/Int.cpp")
         .file("wrapper/Float.cpp")
         .file("wrapper/Array.cpp")
+        .file("wrapper/Tuple.cpp")
         .file("wrapper/Unit.cpp")
         .file("wrapper/Entry.cpp")
         .cpp(true)
