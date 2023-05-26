@@ -6,6 +6,7 @@
 #include "Utility.h"
 #include "GCObject.h"
 #include "Allocator.h"
+#include "io.h"
 
 
 
@@ -92,6 +93,9 @@ void AllocatorImpl::sweep() {
     for (auto Obj : Heaps) {
         GCMetaData &MetaData = getMetaData(Obj);
         if (unlikely(MetaData.Mark != 1)) {
+            SERGE_DEBUG({
+                serge_debug_dump_object(Obj);
+            });
             deallocate(Obj);
         }
     }
