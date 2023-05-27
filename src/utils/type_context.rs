@@ -135,10 +135,6 @@ impl TypeContext {
                 s.push_str(&self.typeref_to_string(*ret));
                 s
             }
-            // Type::Reference(ty) => match ty {
-            //     TypeReference::Named(name) => name.clone(),
-            //     TypeReference::Ref(ty) => self.typeref_to_string(ty),
-            // },
             Type::Tuple(types) => {
                 let mut s = String::new();
                 s.push_str("(");
@@ -185,11 +181,37 @@ impl TypeContext {
             _ => panic!("unknown primitive type"),
         }
     }
+
+    pub fn get_i32(&self) -> TypeRef {
+        self.get_primitive("i32")
+    }
+    pub fn get_f64(&self) -> TypeRef {
+        self.get_primitive("f64")
+    }
+    pub fn get_bool(&self) -> TypeRef {
+        self.get_primitive("bool")
+    }
+    pub fn get_char(&self) -> TypeRef {
+        self.get_primitive("char")
+    }
+    pub fn get_str(&self) -> TypeRef {
+        self.get_primitive("str")
+    }
+    pub fn get_unit(&self) -> TypeRef {
+        self.get_primitive("unit")
+    }
     pub fn enum_type(&mut self, ty: Enum) -> TypeRef {
         let type_ref = self.types.insert(ty.clone().into());
         // self.type_ref_map.insert(ty.clone().into(), type_ref);
         // self.name_ref_map.insert(ty.name.clone(), type_ref);
         type_ref
+    }
+    pub fn get_enum_by_typeref(&self, key: TypeRef) -> Option<&Enum> {
+        if let Type::Enum(ty) = &self.types[key] {
+            return Some(ty);
+        } else {
+            return None;
+        }
     }
     pub fn opaque_type(&mut self, name: String) -> TypeRef {
         let type_ref = self.types.insert(Type::Opaque(name.clone()));
@@ -337,4 +359,17 @@ impl TypeContext {
             }
         }
     }
+
+    pub fn check_ty_can_be_matched(&self, ty: TypeRef) -> bool {
+        match &self.types[ty] {
+            Type::Primitive(PrimitiveType::Unit) => false,
+            Type::Primitive(_) => true,
+            Type::Enum(_) => true,
+            Type::Callable { .. } => false,
+            Type::Tuple(_) => true,
+            Type::Array(_) => false,
+            Type::Opaque(_) => unreachable!(),
+        }
+    }
+
 }

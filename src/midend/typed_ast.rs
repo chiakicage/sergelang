@@ -111,14 +111,14 @@ pub struct TypedIndex {
 }
 
 #[derive(Debug)]
-pub enum TypedExprFields {
+pub enum ExprFieldsKind {
     UnnamedFields(Vec<TypedExpr>),
     NamedFields(HashMap<String, Option<TypedExpr>>),
 }
 #[derive(Debug, Clone)]
-pub enum TypedPatternFields {
+pub enum PatternFieldsKind {
     UnnamedFields(Vec<TypedPattern>),
-    NamedFields(HashMap<String, (Type, Option<TypedPattern>)>),
+    NamedFields(HashMap<String, (TypeRef, Option<TypedPattern>)>),
 }
 
 #[derive(Debug, Clone)]
@@ -129,7 +129,7 @@ pub enum TypedPattern {
     Ctor {
         ty_name: String,
         name: String,
-        fields: Option<TypedPatternFields>,
+        fields: Option<PatternFieldsKind>,
     },
 }
 
@@ -146,7 +146,7 @@ impl TypedPattern {
 pub struct TypedCtor {
     pub ty_name: String,
     pub name: String,
-    pub fields: Option<TypedExprFields>,
+    pub fields: Option<ExprFieldsKind>,
     pub ty: TypeRef,
 }
 
@@ -196,7 +196,7 @@ pub struct TypedFor {
 
 #[derive(Debug)]
 pub struct TypedReturn {
-    pub expr: Box<Option<TypedExpr>>,
+    pub expr: Option<Box<TypedExpr>>,
 }
 
 #[derive(Debug)]
@@ -291,6 +291,300 @@ impl TypedModule {
         Ok(TypedLiteral { kind, ty })
     }
 
+    pub fn else_type_check<'src>(
+        &mut self,
+        expr: &Option<Box<Spanned<Expr<'src>>>>,
+        sym_table: &SymTable<String, TypeRef>,
+        return_ty: TypeRef, // return type of the function
+        in_loop: bool,
+    ) -> Result<TypedElse, Error> {
+        if let Some(expr) = expr {
+            match &expr.0 {
+                Expr::Block(block) => {
+                    let block = self.block_type_check(block, sym_table, return_ty, in_loop)?;
+                    let ty = block.ty;
+                    Ok(TypedElse {
+                        kind: ElseKind::Else(block),
+                        ty,
+                    })
+                }
+                Expr::If {
+                    cond,
+                    then,
+                    ref els,
+                } => {
+                    let r#if =
+                        self.if_type_check(&cond, &then, els, sym_table, return_ty, in_loop)?;
+                    let ty = r#if.ty;
+                    Ok(TypedElse {
+                        kind: ElseKind::ElseIf(Box::new(r#if)),
+                        ty,
+                    })
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            Ok(TypedElse {
+                kind: ElseKind::None,
+                ty: self.ty_ctx.get_unit(),
+            })
+        }
+    }
+
+    pub fn if_type_check<'src>(
+        &mut self,
+        cond: &Spanned<Expr<'src>>,
+        then: &Spanned<Expr<'src>>,
+        els: &Option<Box<Spanned<Expr<'src>>>>,
+        sym_table: &SymTable<String, TypeRef>,
+        return_ty: TypeRef, // return type of the function
+        in_loop: bool,
+    ) -> Result<TypedIf, Error> {
+        let typed_cond = self.expr_type_check(cond, sym_table, return_ty, in_loop)?;
+        if typed_cond.ty != self.ty_ctx.get_bool() {
+            return Err(Error::custom(
+                cond.1,
+                format!(
+                    "type of condition is {} but expected bool",
+                    self.ty_ctx.typeref_to_string(typed_cond.ty)
+                ),
+            ));
+        }
+        let then = match then.0 {
+            Expr::Block(ref block) => block,
+            _ => unreachable!(),
+        };
+        let ty_then = self.block_type_check(then, sym_table, return_ty, in_loop)?;
+        let ty_els = self.else_type_check(els, sym_table, return_ty, in_loop)?;
+        if ty_then.ty != ty_els.ty && els.is_some() {
+            return Err(Error::custom(
+                then.1,
+                format!(
+                    "type of then branch is {} and the type of else branch is {}",
+                    self.ty_ctx.typeref_to_string(ty_then.ty),
+                    self.ty_ctx.typeref_to_string(ty_els.ty)
+                ),
+            ));
+        }
+        let ty = ty_then.ty;
+        Ok(TypedIf {
+            cond: Box::new(typed_cond),
+            then: ty_then,
+            els: ty_els,
+            ty,
+        })
+    }
+
+    pub fn pattern_type_check<'src>(
+        &mut self,
+        pattern: &Spanned<Pattern<'src>>,
+        expected_ty: TypeRef,
+    ) -> Result<TypedPattern, Error> {
+        let (pattern, span) = pattern;
+        let span = *span;
+        match pattern {
+            Pattern::Lit(lit) => {
+                let lit = self.literal_type_check(lit)?;
+                if lit.ty != expected_ty {
+                    return Err(Error::custom(
+                        span,
+                        format!(
+                            "invalid pattern type, expected {}, got {}",
+                            self.ty_ctx.typeref_to_string(expected_ty),
+                            self.ty_ctx.typeref_to_string(lit.ty)
+                        ),
+                    ));
+                }
+                Ok(TypedPattern::Lit(lit))
+            }
+            Pattern::Var((name, _)) => {
+                let var = TypedVariable {
+                    name: name.to_string(),
+                    ty: expected_ty,
+                };
+                Ok(TypedPattern::Var(var))
+            }
+            Pattern::Tuple(pats) => {
+                let tys = match self.ty_ctx.types[expected_ty].clone() {
+                    Type::Tuple(tys) => tys,
+                    _ => {
+                        return Err(Error::custom(
+                            span,
+                            format!(
+                                "invalid pattern type, expected tuple, got {}",
+                                self.ty_ctx.typeref_to_string(expected_ty)
+                            ),
+                        ))
+                    }
+                };
+                if tys.len() != pats.len() {
+                    return Err(Error::custom(
+                        span,
+                        format!(
+                            "invalid pattern type, expected tuple of size {}, got {}",
+                            tys.len(),
+                            pats.len()
+                        ),
+                    ));
+                }
+                let mut tuple = Vec::new();
+                for (ty, pat) in tys.iter().zip(pats.iter()) {
+                    let pat = self.pattern_type_check(pat, *ty)?;
+                    tuple.push(pat);
+                }
+                Ok(TypedPattern::Tuple(tuple))
+            }
+            Pattern::Ctor {
+                ty_name,
+                name,
+                fields,
+            } => {
+                let ty = self
+                    .ty_ctx
+                    .convert_type_str(&TypeStr::Named(ty_name.clone()))?;
+                if ty != expected_ty {
+                    return Err(Error::custom(
+                        span,
+                        format!(
+                            "invalid pattern type, expected {}, got {}",
+                            self.ty_ctx.typeref_to_string(expected_ty),
+                            self.ty_ctx.typeref_to_string(ty)
+                        ),
+                    ));
+                }
+                let r#enum = self.ty_ctx.get_enum_by_typeref(ty).unwrap().clone();
+                let ctor_fields = r#enum.ctors.get(name.0).ok_or({
+                    Error::custom(name.1, format!("constructor {} not found", name.0))
+                })?;
+                if let Some(ctor_fields) = ctor_fields {
+                    match ctor_fields {
+                        FieldsType::UnnamedFields(ty_fields) => {
+                            if let Some(PatternFields::UnnamedFields(fields)) = fields {
+                                if ty_fields.len() != fields.len() {
+                                    return Err(Error::custom(
+                                        span,
+                                        format!(
+                                            "invalid number of fields, expected {}, got {}",
+                                            ty_fields.len(),
+                                            fields.len()
+                                        ),
+                                    ));
+                                }
+                                let mut pat_fields = Vec::new();
+                                for (ty, field) in ty_fields.iter().copied().zip(fields.iter()) {
+                                    let pat = self.pattern_type_check(field, ty)?;
+                                    pat_fields.push(pat);
+                                }
+                                let pat_fields = PatternFieldsKind::UnnamedFields(pat_fields);
+                                Ok(TypedPattern::Ctor {
+                                    ty_name: ty_name.0.to_string(),
+                                    name: name.0.to_string(),
+                                    fields: Some(pat_fields),
+                                })
+                            } else {
+                                Err(Error::custom(span, format!("expected nameless fields")))
+                            }
+                        }
+                        FieldsType::NamedFields(ty_fields) => {
+                            if let Some(PatternFields::NamedFields(fields)) = fields {
+                                if ty_fields.len() != fields.len() {
+                                    return Err(Error::custom(
+                                        span,
+                                        format!(
+                                            "invalid number of fields, expected {}, got {}",
+                                            ty_fields.len(),
+                                            fields.len()
+                                        ),
+                                    ));
+                                }
+                                let mut pat_fields = HashMap::new();
+                                let mut fields_set = HashSet::new();
+                                for (name, pattern) in fields {
+                                    let ty = ty_fields.get(name.0).copied().ok_or({
+                                        Error::custom(
+                                            name.1,
+                                            format!("field {} not found in enum", name.0),
+                                        )
+                                    })?;
+                                    if !fields_set.insert(name.0) {
+                                        return Err(Error::custom(
+                                            name.1,
+                                            format!("field {} already set", name.0),
+                                        ));
+                                    }
+                                    if let Some(pattern) = pattern {
+                                        let pat = self.pattern_type_check(pattern, ty)?;
+                                        pat_fields.insert(name.0.to_string(), (ty, Some(pat)));
+                                    } else {
+                                        pat_fields.insert(name.0.to_string(), (ty, None));
+                                    }
+                                }
+                                let pat_fields = PatternFieldsKind::NamedFields(pat_fields);
+                                Ok(TypedPattern::Ctor {
+                                    ty_name: ty_name.0.to_string(),
+                                    name: name.0.to_string(),
+                                    fields: Some(pat_fields),
+                                })
+                            } else {
+                                Err(Error::custom(span, format!("expected named fields")))
+                            }
+                        }
+                    }
+                } else {
+                    match fields {
+                        Some(_) => Err(Error::custom(span, format!("expected no fields"))),
+                        None => Ok(TypedPattern::Ctor {
+                            ty_name: ty_name.0.to_string(),
+                            name: name.0.to_string(),
+                            fields: None,
+                        }),
+                    }
+                }
+            }
+        }
+    }
+    pub fn insert_pattern_symbol_binding(
+        &mut self,
+        pat: &TypedPattern,
+        sym_table: &SymTable<String, TypeRef>,
+    ) -> SymTable<String, TypeRef> {
+        let mut sym_table = sym_table.clone();
+        match pat {
+            TypedPattern::Var(var) => {
+                if var.name != "_" {
+                    sym_table = sym_table.insert(var.name.clone(), var.ty);
+                }
+            }
+            TypedPattern::Tuple(pats) => {
+                for pat in pats {
+                    sym_table = self.insert_pattern_symbol_binding(pat, &sym_table);
+                }
+            }
+            TypedPattern::Ctor { fields, .. } => {
+                if let Some(fields) = fields {
+                    match fields {
+                        PatternFieldsKind::UnnamedFields(pats) => {
+                            for pat in pats {
+                                sym_table = self.insert_pattern_symbol_binding(pat, &sym_table);
+                            }
+                        }
+                        PatternFieldsKind::NamedFields(pats) => {
+                            for (name, (ty, pat)) in pats.iter() {
+                                if let Some(pat) = pat {
+                                    sym_table = self.insert_pattern_symbol_binding(pat, &sym_table);
+                                } else {
+                                    sym_table = sym_table.insert(name.clone(), *ty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        sym_table
+    }
+
     fn expr_type_check<'src>(
         &mut self,
         expr: &Spanned<Expr<'src>>,
@@ -361,9 +655,9 @@ impl TypedModule {
             Expr::BinOpExpr { lhs, op, rhs } => {
                 let ty_lhs = self.expr_type_check(lhs, sym_table, return_ty, in_loop)?;
                 let ty_rhs = self.expr_type_check(rhs, sym_table, return_ty, in_loop)?;
-                let int_type = self.ty_ctx.get_primitive("i32");
-                let float_type = self.ty_ctx.get_primitive("f64");
-                let bool_type = self.ty_ctx.get_primitive("bool");
+                let int_type = self.ty_ctx.get_i32();
+                let float_type = self.ty_ctx.get_f64();
+                let bool_type = self.ty_ctx.get_bool();
                 let ty_lhs_str = self.ty_ctx.typeref_to_string(ty_lhs.ty);
                 let ty_rhs_str = self.ty_ctx.typeref_to_string(ty_rhs.ty);
                 let ty = match op {
@@ -372,7 +666,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {:?}: {:?}",
+                                    "invalid type for lhs of binary operator {}: {}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -381,7 +675,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {:?}: {:?}",
+                                    "invalid type for rhs of binary operator {}: {}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -397,7 +691,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {:?}: {:?}",
+                                    "invalid type for lhs of binary operator {}: {}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -406,7 +700,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {:?}: {:?}",
+                                    "invalid type for rhs of binary operator {}: {}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -418,7 +712,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {:?}: {:?}",
+                                    "invalid type for lhs of binary operator {}: {}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -427,7 +721,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {:?}: {:?}",
+                                    "invalid type for rhs of binary operator {}: {}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -439,7 +733,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {:?}: {:?}",
+                                    "invalid type for lhs of binary operator {}: {}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -448,7 +742,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {:?}: {:?}",
+                                    "invalid type for rhs of binary operator {}: {}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -474,7 +768,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of unary operator {:?}: {:?}",
+                                    "invalid type for rhs of unary operator {}: {}",
                                     op,
                                     self.ty_ctx.typeref_to_string(ty_rhs.ty)
                                 ),
@@ -487,7 +781,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of unary operator {:?}: {:?}",
+                                    "invalid type for rhs of unary operator {}: {}",
                                     op,
                                     self.ty_ctx.typeref_to_string(ty_rhs.ty)
                                 ),
@@ -504,15 +798,13 @@ impl TypedModule {
                 }))
             }
 
-            // Expr::If { cond, then, els } => {
-            //     let r#if = if_type_check(cond, then, els, sym_table, ty_table, return_ty)?;
-            //     Ok(TypedExpr::If(r#if))
-            // }
+            Expr::If { cond, then, els } => {
+                let r#if = self.if_type_check(cond, then, els, sym_table, return_ty, in_loop)?;
+                Ok(ExprKind::If(r#if))
+            }
             Expr::Call { func, args } => {
                 let ty_func = self.expr_type_check(func, sym_table, return_ty, in_loop)?;
 
-
-                
                 if let Type::Callable { params, ret } = self.ty_ctx.types[ty_func.ty].clone() {
                     if params.len() != args.len() {
                         return Err(Error::custom(
@@ -547,7 +839,10 @@ impl TypedModule {
                 } else {
                     Err(Error::custom(
                         func.1,
-                        format!("invalid callable type {}", self.ty_ctx.typeref_to_string(ty_func.ty)),
+                        format!(
+                            "invalid callable type {}",
+                            self.ty_ctx.typeref_to_string(ty_func.ty)
+                        ),
                     ))
                 }
             }
@@ -558,7 +853,10 @@ impl TypedModule {
                     if ty_index.ty != self.ty_ctx.get_primitive("i32") {
                         return Err(Error::custom(
                             index.1,
-                            format!("invalid index type {}", self.ty_ctx.typeref_to_string(ty_index.ty)),
+                            format!(
+                                "invalid index type {}",
+                                self.ty_ctx.typeref_to_string(ty_index.ty)
+                            ),
                         ));
                     }
                     Ok(ExprKind::Index(TypedIndex {
@@ -569,21 +867,29 @@ impl TypedModule {
                 } else {
                     Err(Error::custom(
                         array.1,
-                        format!("invalid array type {}", self.ty_ctx.typeref_to_string(ty_array.ty)),
+                        format!(
+                            "invalid array type {}",
+                            self.ty_ctx.typeref_to_string(ty_array.ty)
+                        ),
                     ))
                 }
             }
-            /*
+
             Expr::Ctor {
                 ty_name,
                 name,
                 fields,
             } => {
-                let ty = ty_table
-                    .get(ty_name.0)
-                    .ok_or_else(|| Error::custom(span, format!("type {} not found", ty_name.0)))?;
-                let ctor_fields = ty.ctors.get(name.0).ok_or_else(|| {
-                    Error::custom(span, format!("constructor {} not found", name.0))
+                let ty_enum = self
+                    .ty_ctx
+                    .get_typeref_by_name(ty_name.0)
+                    .ok_or(Error::custom(
+                        ty_name.1,
+                        format!("enum {} not found", name.0),
+                    ))?;
+                let r#enum = self.ty_ctx.get_enum_by_typeref(ty_enum).unwrap().clone();
+                let ctor_fields = r#enum.ctors.get(name.0).ok_or({
+                    Error::custom(name.1, format!("constructor {} not found", name.0))
                 })?;
 
                 if let Some(ctor_fields) = ctor_fields {
@@ -603,7 +909,7 @@ impl TypedModule {
 
                                 let mut ty_fields = HashMap::new();
                                 for (name, val) in fields {
-                                    if let Some(ty) = ctor_fields.get(name.0) {
+                                    if let Some(ty) = ctor_fields.get(name.0).copied() {
                                         if ty_fields.contains_key(name.0) {
                                             return Err(Error::custom(
                                                 name.1,
@@ -612,34 +918,34 @@ impl TypedModule {
                                         }
 
                                         if let Some(val) = val {
-                                            let ty_val = expr_type_check(
-                                                val, sym_table, ty_table, return_ty,
+                                            let ty_val = self.expr_type_check(
+                                                val, sym_table, return_ty, in_loop,
                                             )?;
-                                            if *ty != ty_val.ty() {
+                                            if ty != ty_val.ty {
                                                 return Err(Error::custom(
                                                     val.1,
                                                     format!(
                                                         "invalid field type, expected {}, got {}",
-                                                        ty,
-                                                        ty_val.ty()
+                                                        self.ty_ctx.typeref_to_string(ty),
+                                                        self.ty_ctx.typeref_to_string(ty_val.ty)
                                                     ),
                                                 ));
                                             }
                                             ty_fields.insert(name.0.to_string(), Some(ty_val));
                                         } else {
-                                            let ty_val =
-                                                sym_table.get(name.0).ok_or_else(|| {
-                                                    Error::custom(
-                                                        name.1,
-                                                        format!("variable {} not found", name.0),
-                                                    )
-                                                })?;
-                                            if *ty != *ty_val {
+                                            let ty_val = sym_table.get(name.0).copied().ok_or({
+                                                Error::custom(
+                                                    name.1,
+                                                    format!("variable {} not found", name.0),
+                                                )
+                                            })?;
+                                            if ty != ty_val {
                                                 return Err(Error::custom(
                                                     name.1,
                                                     format!(
                                                         "invalid field type, expected {}, got {}",
-                                                        ty, ty_val
+                                                        self.ty_ctx.typeref_to_string(ty),
+                                                        self.ty_ctx.typeref_to_string(ty_val)
                                                     ),
                                                 ));
                                             }
@@ -652,12 +958,12 @@ impl TypedModule {
                                         ));
                                     }
                                 }
-                                let ty_fields = TypedExprFields::NamedFields(ty_fields);
-                                Ok(TypedExpr::Ctor(TypedCtor {
+                                let ty_fields = ExprFieldsKind::NamedFields(ty_fields);
+                                Ok(ExprKind::Ctor(TypedCtor {
                                     ty_name: ty_name.0.to_string(),
                                     name: name.0.to_string(),
                                     fields: Some(ty_fields),
-                                    ty: Type::Named(ty_name.0.to_string()),
+                                    ty: ty_enum,
                                 }))
                             } else {
                                 Err(Error::custom(span, format!("expected named fields")))
@@ -676,27 +982,27 @@ impl TypedModule {
                                     ));
                                 }
                                 let mut ty_fields = Vec::new();
-                                for (ty, field) in ctor_fields.iter().zip(fields.iter()) {
+                                for (ty, field) in ctor_fields.iter().copied().zip(fields.iter()) {
                                     let ty_val =
-                                        expr_type_check(field, sym_table, ty_table, return_ty)?;
-                                    if *ty != ty_val.ty() {
+                                        self.expr_type_check(field, sym_table, return_ty, in_loop)?;
+                                    if ty != ty_val.ty {
                                         return Err(Error::custom(
                                             field.1,
                                             format!(
                                                 "invalid field type, expected {}, got {}",
-                                                ty,
-                                                ty_val.ty()
+                                                self.ty_ctx.typeref_to_string(ty),
+                                                self.ty_ctx.typeref_to_string(ty_val.ty)
                                             ),
                                         ));
                                     }
                                     ty_fields.push(ty_val);
                                 }
-                                let ty_fields = TypedExprFields::UnnamedFields(ty_fields);
-                                Ok(TypedExpr::Ctor(TypedCtor {
+                                let ty_fields = ExprFieldsKind::UnnamedFields(ty_fields);
+                                Ok(ExprKind::Ctor(TypedCtor {
                                     ty_name: ty_name.0.to_string(),
                                     name: name.0.to_string(),
                                     fields: Some(ty_fields),
-                                    ty: Type::Named(ty_name.0.to_string()),
+                                    ty: ty_enum,
                                 }))
                             } else {
                                 Err(Error::custom(span, format!("expected unnamed fields")))
@@ -706,60 +1012,60 @@ impl TypedModule {
                 } else {
                     match fields {
                         Some(_) => Err(Error::custom(span, format!("expected no fields"))),
-                        None => Ok(TypedExpr::Ctor(TypedCtor {
+                        None => Ok(ExprKind::Ctor(TypedCtor {
                             ty_name: ty_name.0.to_string(),
                             name: name.0.to_string(),
                             fields: None,
-                            ty: Type::Named(ty_name.0.to_string()),
+                            ty: ty_enum,
                         })),
                     }
                 }
             }
             Expr::Match { expr, arms } => {
-                let ty_expr = expr_type_check(expr, sym_table, ty_table, return_ty)?;
-                match ty_expr.ty() {
-                    Type::Primitive(PrimitiveType::Int)
-                    | Type::Primitive(PrimitiveType::String)
-                    | Type::Primitive(PrimitiveType::Char)
-                    | Type::Primitive(PrimitiveType::Bool)
-                    | Type::Named(_)
-                    | Type::Tuple(_) => {}
-                    _ => {
-                        return Err(Error::custom(
-                            expr.1,
-                            format!("can't match type {}", ty_expr.ty()),
-                        ));
-                    }
-                };
+                let ty_expr = self.expr_type_check(expr, sym_table, return_ty, in_loop)?;
+                if !self.ty_ctx.check_ty_can_be_matched(ty_expr.ty) {
+                    return Err(Error::custom(
+                        expr.1,
+                        format!(
+                            "type {} cannot be matched",
+                            self.ty_ctx.typeref_to_string(ty_expr.ty)
+                        ),
+                    ));
+                }
                 let mut ty = None;
                 let mut ty_arms = Vec::new();
                 for (arm, _) in arms {
-                    let ty_pat = pattern_type_check(&arm.pattern, &ty_expr.ty(), ty_table)?;
-                    let new_sym_table = insert_pattern_symbol_binding(&ty_pat, sym_table);
-                    let ty_arm = expr_type_check(&arm.expr, &new_sym_table, ty_table, return_ty)?;
-                    if let Some(ty) = ty.clone() {
-                        if ty != ty_arm.ty() {
+                    let ty_pat = self.pattern_type_check(&arm.pattern, ty_expr.ty)?;
+                    let new_sym_table = self.insert_pattern_symbol_binding(&ty_pat, sym_table);
+                    let ty_arm =
+                        self.expr_type_check(&arm.expr, &new_sym_table, return_ty, in_loop)?;
+                    if let Some(ty) = ty {
+                        if ty != ty_arm.ty {
                             return Err(Error::custom(
                                 arm.expr.1,
-                                format!("invalid arm type, expected {}, got {}", ty, ty_arm.ty()),
+                                format!(
+                                    "invalid arm type, expected {}, got {}",
+                                    self.ty_ctx.typeref_to_string(ty),
+                                    self.ty_ctx.typeref_to_string(ty_arm.ty)
+                                ),
                             ));
                         }
                     } else {
-                        ty = Some(ty_arm.ty());
+                        ty = Some(ty_arm.ty);
                     }
                     let ty_arm = TypedMatchArm {
                         pattern: ty_pat,
-                        ty: ty_arm.ty(),
+                        ty: ty_arm.ty,
                         expr: Box::new(ty_arm),
                     };
                     ty_arms.push(ty_arm);
                 }
                 if let Some(ty) = ty {
                     let pats = ty_arms.iter().map(|arm| &arm.pattern).collect::<Vec<_>>();
-                    if pattern_non_exhaustive_check(&pats, &ty_expr.ty(), ty_table) {
-                        return Err(Error::custom(span, format!("pattern not exhaustive")));
-                    }
-                    Ok(TypedExpr::Match(TypedMatch {
+                    // if self.pattern_non_exhaustive_check(&pats, &ty_expr.ty(), ty_table) {
+                    //     return Err(Error::custom(span, format!("pattern not exhaustive")));
+                    // }
+                    Ok(ExprKind::Match(TypedMatch {
                         expr: Box::new(ty_expr),
                         arms: ty_arms,
                         ty,
@@ -777,46 +1083,50 @@ impl TypedModule {
                 let mut args_ty = Vec::new();
                 let mut args_name = Vec::new();
                 for (name, ty) in args {
-                    let ty = convert_type_str(&ty.0, ty_table)?;
-                    args_ty.push(ty.clone());
+                    let ty = self.ty_ctx.convert_type_str(&ty.0)?;
+                    args_ty.push(ty);
                     args_name.push(name.0.to_string());
-                    sym_table = sym_table.insert(name.0.to_string(), ty.clone());
+                    sym_table = sym_table.insert(name.0.to_string(), ty);
                 }
 
                 let return_ty = match return_ty {
-                    Some((ty, _)) => convert_type_str(ty, ty_table)?,
-                    None => Type::Primitive(PrimitiveType::Unit),
+                    Some((ty, _)) => self.ty_ctx.convert_type_str(ty)?,
+                    None => self.ty_ctx.get_unit(),
                 };
 
-                let ty_body = expr_type_check(body, &sym_table, ty_table, &return_ty)?;
+                let ty_body = self.expr_type_check(body, &sym_table, return_ty, false)?;
 
-                if ty_body.ty() != return_ty {
+                if ty_body.ty != return_ty {
                     return Err(Error::custom(
                         body.1,
                         format!(
                             "invalid return type, expected {}, got {}",
-                            return_ty,
-                            ty_body.ty()
+                            self.ty_ctx.typeref_to_string(return_ty),
+                            self.ty_ctx.typeref_to_string(ty_body.ty)
                         ),
                     ));
                 }
                 let ty_closure = TypedClosure {
                     args_name,
                     args_ty: args_ty.clone(),
-                    return_ty: return_ty.clone(),
+                    return_ty,
                     body: Box::new(ty_body),
-                    ty: Type::Func(args_ty, Box::new(return_ty)),
+                    ty: self.ty_ctx.func_type(args_ty, return_ty),
                 };
 
-                Ok(TypedExpr::Closure(ty_closure))
+                Ok(ExprKind::Closure(ty_closure))
             }
             Expr::Let { name, ty, rhs } => {
-                let ty = convert_type_str(&ty.0, ty_table)?;
-                let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?;
-                if ty != ty_rhs.ty() {
+                let ty = self.ty_ctx.convert_type_str(&ty.0)?;
+                let ty_rhs = self.expr_type_check(rhs, sym_table, return_ty, in_loop)?;
+                if ty != ty_rhs.ty {
                     return Err(Error::custom(
                         rhs.1,
-                        format!("invalid rhs type, expected {}, got {}", ty, ty_rhs.ty()),
+                        format!(
+                            "invalid rhs type, expected {}, got {}",
+                            self.ty_ctx.typeref_to_string(ty),
+                            self.ty_ctx.typeref_to_string(ty_rhs.ty)
+                        ),
                     ));
                 }
                 let ty_let = TypedLet {
@@ -824,17 +1134,17 @@ impl TypedModule {
                     ty,
                     rhs: Box::new(ty_rhs),
                 };
-                Ok(TypedExpr::Let(ty_let))
+                Ok(ExprKind::Let(ty_let))
             }
+
             Expr::While { cond, body } => {
-                let ty_cond = expr_type_check(cond, sym_table, ty_table, return_ty)?;
-                if ty_cond.ty() != Type::Primitive(PrimitiveType::Bool) {
+                let ty_cond = self.expr_type_check(cond, sym_table, return_ty, in_loop)?;
+                if ty_cond.ty != self.ty_ctx.get_bool() {
                     return Err(Error::custom(
                         cond.1,
                         format!(
-                            "invalid condition type, expected {}, got {}",
-                            Type::Primitive(PrimitiveType::Bool),
-                            ty_cond.ty()
+                            "invalid condition type, expected bool, got {}",
+                            self.ty_ctx.typeref_to_string(ty_cond.ty)
                         ),
                     ));
                 }
@@ -842,11 +1152,14 @@ impl TypedModule {
                     Expr::Block(ref block) => block,
                     _ => unreachable!(),
                 };
-                let ty_body = block_type_check(body, sym_table, ty_table, return_ty)?;
-                if ty_body.ty != Type::Primitive(PrimitiveType::Unit) {
+                let ty_body = self.block_type_check(body, sym_table, return_ty, true)?;
+                if ty_body.ty != self.ty_ctx.get_unit() {
                     return Err(Error::custom(
                         body.1,
-                        format!("invalid body type, expected no type, got {}", ty_body.ty),
+                        format!(
+                            "invalid body type, expected no type, got {}",
+                            self.ty_ctx.typeref_to_string(ty_body.ty)
+                        ),
                     ));
                 }
                 let ty_while = TypedWhile {
@@ -854,7 +1167,7 @@ impl TypedModule {
                     body: ty_body,
                 };
 
-                Ok(TypedExpr::While(ty_while))
+                Ok(ExprKind::While(ty_while))
             }
             Expr::For {
                 var,
@@ -862,39 +1175,39 @@ impl TypedModule {
                 end,
                 body,
             } => {
-                let ty_start = expr_type_check(start, sym_table, ty_table, return_ty)?;
-                let ty_end = expr_type_check(end, sym_table, ty_table, return_ty)?;
-                if ty_start.ty() != Type::Primitive(PrimitiveType::Int) {
+                let ty_start = self.expr_type_check(start, sym_table, return_ty, in_loop)?;
+                let ty_end = self.expr_type_check(end, sym_table, return_ty, in_loop)?;
+                if ty_start.ty != self.ty_ctx.get_i32() {
                     return Err(Error::custom(
                         start.1,
                         format!(
-                            "invalid start type, expected {}, got {}",
-                            Type::Primitive(PrimitiveType::Int),
-                            ty_start.ty()
+                            "invalid start type, expected i32, got {}",
+                            self.ty_ctx.typeref_to_string(ty_start.ty)
                         ),
                     ));
                 }
-                if ty_end.ty() != Type::Primitive(PrimitiveType::Int) {
+                if ty_end.ty != self.ty_ctx.get_i32() {
                     return Err(Error::custom(
                         end.1,
                         format!(
-                            "invalid end type, expected {}, got {}",
-                            Type::Primitive(PrimitiveType::Int),
-                            ty_end.ty()
+                            "invalid end type, expected i32, got {}",
+                            self.ty_ctx.typeref_to_string(ty_end.ty)
                         ),
                     ));
                 }
-                let new_sym_table =
-                    sym_table.insert(var.0.to_string(), Type::Primitive(PrimitiveType::Int));
+                let new_sym_table = sym_table.insert(var.0.to_string(), self.ty_ctx.get_i32());
                 let body = match body.0 {
                     Expr::Block(ref block) => block,
                     _ => unreachable!(),
                 };
-                let ty_body = block_type_check(body, &new_sym_table, ty_table, return_ty)?;
-                if ty_body.ty != Type::Primitive(PrimitiveType::Unit) {
+                let ty_body = self.block_type_check(body, &new_sym_table, return_ty, true)?;
+                if ty_body.ty != self.ty_ctx.get_unit() {
                     return Err(Error::custom(
                         body.1,
-                        format!("invalid body type, expected no type, got {}", ty_body.ty),
+                        format!(
+                            "invalid body type, expected no type, got {}",
+                            self.ty_ctx.typeref_to_string(ty_body.ty)
+                        ),
                     ));
                 }
                 let ty_for = TypedFor {
@@ -903,55 +1216,52 @@ impl TypedModule {
                     end: Box::new(ty_end),
                     body: ty_body,
                 };
-                Ok(TypedExpr::For(ty_for))
+                Ok(ExprKind::For(ty_for))
             }
             Expr::Return(expr) => {
                 let expr = match expr {
-                    Some(expr) => Some(expr_type_check(expr, sym_table, ty_table, return_ty)?),
+                    Some(expr) => Some(self.expr_type_check(expr, sym_table, return_ty, in_loop)?),
                     None => None,
                 };
-                let ty_expr = match &expr {
-                    Some(expr) => expr.ty(),
-                    None => Type::Primitive(PrimitiveType::Unit),
-                };
+                let ty_expr = expr.as_ref().map_or(self.ty_ctx.get_unit(), |e| e.ty);
 
-                if ty_expr != *return_ty {
+                if ty_expr != return_ty {
                     return Err(Error::custom(
                         span,
                         format!(
                             "invalid return type, expected {}, got {}",
-                            return_ty, ty_expr
+                            self.ty_ctx.typeref_to_string(return_ty),
+                            self.ty_ctx.typeref_to_string(ty_expr)
                         ),
                     ));
                 }
-                Ok(TypedExpr::Return(TypedReturn {
-                    expr: Box::new(expr),
+                Ok(ExprKind::Return(TypedReturn {
+                    expr: expr.map(Box::new),
                 }))
             }
-            Expr::Break => Ok(TypedExpr::Break),
-            Expr::Continue => Ok(TypedExpr::Continue),
+            Expr::Break => Ok(ExprKind::Break),
+            Expr::Continue => Ok(ExprKind::Continue),
             Expr::Assign { name, rhs } => {
-                let ty_var = if let Some(ty) = sym_table.get(name.0) {
-                    Ok(ty.clone())
-                } else {
-                    Err(Error::custom(
-                        span,
-                        format!("undefined variable {}", name.0),
-                    ))
-                }?;
-                let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?;
-                if ty_var != ty_rhs.ty() {
+                let ty_var = sym_table.get(name.0).copied().ok_or(Error::custom(
+                    span,
+                    format!("undefined variable {}", name.0),
+                ))?;
+                let ty_rhs = self.expr_type_check(rhs, sym_table, return_ty, in_loop)?;
+                if ty_var != ty_rhs.ty {
                     return Err(Error::custom(
                         rhs.1,
-                        format!("invalid rhs type, expected {}, got {}", ty_var, ty_rhs.ty()),
+                        format!(
+                            "invalid rhs type, expected {}, got {}",
+                            self.ty_ctx.typeref_to_string(ty_var),
+                            self.ty_ctx.typeref_to_string(ty_rhs.ty)
+                        ),
                     ));
                 }
-                Ok(TypedExpr::Assign(TypedAssign {
+                Ok(ExprKind::Assign(TypedAssign {
                     name: name.0.to_string(),
                     rhs: Box::new(ty_rhs),
                 }))
-            }*/
-            _ => todo!(),
+            }
         };
         result.map(|expr| {
             let ty = match &expr {
@@ -968,13 +1278,13 @@ impl TypedModule {
                 ExprKind::Ctor(ctor) => ctor.ty,
                 ExprKind::Match(match_) => match_.ty,
                 ExprKind::Closure(closure) => closure.ty,
-                ExprKind::Let(_) => self.ty_ctx.get_primitive("unit"),
-                ExprKind::While(_) => self.ty_ctx.get_primitive("unit"),
-                ExprKind::For(_) => self.ty_ctx.get_primitive("unit"),
-                ExprKind::Return(_) => self.ty_ctx.get_primitive("unit"),
-                ExprKind::Break => self.ty_ctx.get_primitive("unit"),
-                ExprKind::Continue => self.ty_ctx.get_primitive("unit"),
-                ExprKind::Assign(_) => self.ty_ctx.get_primitive("unit"),
+                ExprKind::Let(_) => self.ty_ctx.get_unit(),
+                ExprKind::While(_) => self.ty_ctx.get_unit(),
+                ExprKind::For(_) => self.ty_ctx.get_unit(),
+                ExprKind::Return(_) => self.ty_ctx.get_unit(),
+                ExprKind::Break => self.ty_ctx.get_unit(),
+                ExprKind::Continue => self.ty_ctx.get_unit(),
+                ExprKind::Assign(_) => self.ty_ctx.get_unit(),
             };
             TypedExpr { kind: expr, ty }
         })
@@ -988,10 +1298,13 @@ impl TypedModule {
     ) -> Result<TypedBlock, Error> {
         let mut sym_table = sym_table.clone();
         let mut exprs = Vec::new();
-        let mut last_ty = self.ty_ctx.get_primitive("unit");
-
-        for expr in &block.0 .0 {
-            let ty_expr = self.expr_type_check(expr, &sym_table, return_ty, in_loop)?;
+        let mut last_ty = self.ty_ctx.get_unit();
+        for expr in &block.0.stmts {
+            let inner_expr = match expr {
+                BlockedExpr::WithSemicolon(expr) => expr,
+                BlockedExpr::WithoutSemicolon(expr) => expr,
+            };
+            let ty_expr = self.expr_type_check(inner_expr, &sym_table, return_ty, in_loop)?;
             match &ty_expr.kind {
                 ExprKind::Let(TypedLet { name, ty, .. }) => {
                     sym_table = sym_table.insert(name.clone(), *ty);
@@ -999,7 +1312,7 @@ impl TypedModule {
                 ExprKind::Break | ExprKind::Continue => {
                     if !in_loop {
                         return Err(Error::custom(
-                            expr.1,
+                            inner_expr.1,
                             "break/continue outside of loop".to_string(),
                         ));
                     }
@@ -1008,7 +1321,7 @@ impl TypedModule {
                     Some(ty_expr) => {
                         if ty_expr.ty != return_ty {
                             return Err(Error::custom(
-                                expr.1,
+                                inner_expr.1,
                                 format!(
                                     "invalid return type, expected {}, got {}",
                                     self.ty_ctx.typeref_to_string(return_ty),
@@ -1020,7 +1333,7 @@ impl TypedModule {
                     None => {
                         if return_ty != self.ty_ctx.get_primitive("unit") {
                             return Err(Error::custom(
-                                expr.1,
+                                inner_expr.1,
                                 format!(
                                     "invalid return type, expected {}, got unit",
                                     self.ty_ctx.typeref_to_string(return_ty),
@@ -1031,7 +1344,10 @@ impl TypedModule {
                 },
                 _ => {}
             }
-            last_ty = ty_expr.ty;
+            last_ty = match expr {
+                BlockedExpr::WithSemicolon(_) => self.ty_ctx.get_unit(),
+                BlockedExpr::WithoutSemicolon(_) => ty_expr.ty,
+            };
             exprs.push(ty_expr);
         }
         Ok(TypedBlock { exprs, ty: last_ty })

@@ -170,7 +170,7 @@ fn main() {
             match TypedModule::create_from_ast(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
-                    println!("{:#?}", typed_ast);
+                    // println!("{:#?}", typed_ast);
                 }
                 Err(err) => {
                     errs.push(err);
