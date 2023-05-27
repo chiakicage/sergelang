@@ -206,13 +206,6 @@ impl TypeContext {
         // self.name_ref_map.insert(ty.name.clone(), type_ref);
         type_ref
     }
-    pub fn get_enum_by_typeref(&self, key: TypeRef) -> Option<&Enum> {
-        if let Type::Enum(ty) = &self.types[key] {
-            return Some(ty);
-        } else {
-            return None;
-        }
-    }
     pub fn opaque_type(&mut self, name: String) -> TypeRef {
         let type_ref = self.types.insert(Type::Opaque(name.clone()));
         // self.type_ref_map
@@ -223,16 +216,28 @@ impl TypeContext {
     pub fn func_type(&mut self, params: Vec<TypeRef>, ret: TypeRef) -> TypeRef {
         // let type_ref = self.types.insert(Type::Callable { params, ret });
         let ty = Type::Callable { params, ret };
-        self.insert_type_or_get(ty)
+        self.get_or_insert_type(ty)
     }
 
-    pub fn insert_type_or_get(&mut self, ty: Type) -> TypeRef {
+    pub fn tuple_type(&mut self, types: Vec<TypeRef>) -> TypeRef {
+        let ty = Type::Tuple(types);
+        self.get_or_insert_type(ty)
+    }
+    
+    pub fn get_or_insert_type(&mut self, ty: Type) -> TypeRef {
         if let Some(ty_ref) = self.type_ref_map.get(&ty) {
             return *ty_ref;
         }
         let ty_ref = self.types.insert(ty.clone());
         self.type_ref_map.insert(ty, ty_ref);
         ty_ref
+    }
+    pub fn get_enum_by_typeref(&self, key: TypeRef) -> Option<&Enum> {
+        if let Type::Enum(ty) = &self.types[key] {
+            return Some(ty);
+        } else {
+            return None;
+        }
     }
     pub fn get_typeref_by_type(&self, ty: Type) -> Option<TypeRef> {
         self.type_ref_map.get(&ty).copied()
@@ -343,7 +348,7 @@ impl TypeContext {
                     .collect::<Result<Vec<_>, _>>()?;
                 let ret = self.convert_type_str(&ret.0)?;
                 let ty = Type::Callable { params, ret };
-                Ok(self.insert_type_or_get(ty))
+                Ok(self.get_or_insert_type(ty))
             }
             TypeStr::Tuple(tys) => {
                 let tys = tys
@@ -351,11 +356,11 @@ impl TypeContext {
                     .map(|(t, _)| self.convert_type_str(t))
                     .collect::<Result<Vec<_>, _>>()?;
                 let ty = Type::Tuple(tys);
-                Ok(self.insert_type_or_get(ty))
+                Ok(self.get_or_insert_type(ty))
             }
             TypeStr::Array(ty) => {
                 let ty = self.convert_type_str(&ty.0)?;
-                Ok(self.insert_type_or_get(Type::Array(ty)))
+                Ok(self.get_or_insert_type(Type::Array(ty)))
             }
         }
     }
