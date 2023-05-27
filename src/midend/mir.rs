@@ -13,7 +13,10 @@ use rpds::HashTrieMap;
 
 type SymTable<K, V> = HashTrieMap<K, V>;
 
-type Literal = TypedLiteral;
+
+type BinOp = crate::ast::BinOp;
+type UnOp = crate::ast::UnOp;
+
 
 new_key_type! {
     pub struct VarRef;
@@ -81,12 +84,18 @@ pub struct Operand {
 #[derive(Debug, Clone)]
 pub enum OperandEnum {
     Imm(i32),
-    Literal(Literal),
+    Literal(LiteralKind),
     Var(VarRef),
 }
 
 #[derive(Debug, Clone)]
-pub enum Rvalue {
+pub struct Rvalue {
+    pub typ: TypeRef,
+    pub val: Box<RvalueEnum>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RvalueEnum {
     BinaryOperator(BinOp, Operand, Operand),
     UnaryOperator(UnOp, Operand, Operand),
     Call(String, Vec<Operand>),
