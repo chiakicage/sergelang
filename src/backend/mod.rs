@@ -265,22 +265,26 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                     PrimitiveType::Bool => {
                         let bool_ptr = &lit_ptr.const_cast(self.context.bool_type().into());
                         let tmp_bool = self.builder.build_load(bool_ptr, &self.unnameed_index.to_string());
-                        return tmp_bool.into_int_value();
+                        return tmp_bool;
+                        // return tmp_bool.into_int_value();
                     }
                     PrimitiveType::Char => {
                         let char_ptr = &lit_ptr.const_cast(self.context.i8_type().into());
                         let tmp_char = self.builder.build_load(char_ptr, &self.unnameed_index.to_string());
-                        return tmp_char.into_int_value();
+                        return tmp_char;
+                        // return tmp_char.into_int_value();
                     }
                     PrimitiveType::Float => {
                         let float_ptr = &lit_ptr.const_cast(self.context.f64_type().into());
                         let tmp_float = self.builder.build_load(f64_ptr, &self.unnameed_index.to_string());
-                        return tmp_float.into_float_value();
+                        return tmp_float;
+                        // return tmp_float.into_float_value();
                     }
                     PrimitiveType::Int => {
                         let int_ptr = &lit_ptr.const_cast(self.context.i32_type().into());
                         let tmp_int = self.builder.build_load(int_ptr, &self.unnameed_index.to_string());
-                        return tmp_int.into_int_value();
+                        return tmp_int;
+                        // return tmp_int.into_int_value();
                     }
                     PrimitiveType::String => {
                         return self.builder.build_load(lit_ptr, &self.unnameed_index.to_string()).into_struct_value();
@@ -450,8 +454,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
             let _lhs_res = self.codegen_expr(&typedBinOp.lhs, &mut block_sym_table, &mut block_sym_ptr_table);
             
             if let (Some(lhs_res), Some(rhs_res)) = (_lhs_res, _rhs_res) {
-                let rhs_value = self.literal_unwrap(&typedBinOp.ty, &rhs_res.ptr);
-                let lhs_value = self.literal_unwrap(&typedBinOp.ty, &lhs_res.ptr);
+                let mut rhs_value = self.literal_unwrap(&typedBinOp.ty, &rhs_res.ptr);
+                let mut lhs_value = self.literal_unwrap(&typedBinOp.ty, &lhs_res.ptr);
 
                 let mut tmp_result : BasicValue;
 
@@ -596,6 +600,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                         }
                     }
                     PrimitiveType::Float => {
+                        rhs_value = self.builder.build_float_cast(&rhs_value, self.context.f64_type().into(), "");
+                        lhs_value = self.builder.build_float_cast(&lhs_value, self.context.f64_type().into(), "");
                         match &typedBinOp.op {
                             BinOp::Add => {
                                 let tmp_result = self.builder.build_float_add(lhs_value, rhs_value, "");
