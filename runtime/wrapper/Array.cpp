@@ -49,6 +49,7 @@ void __serge_array_push_back(SergeArray *array, GCObjectHandle value) {
         std::memcpy(new_buffer, array->DataPtr, old_capacity * sizeof(GCObjectHandle));
         RawFree(array->DataPtr);
         array->DataPtr = new_buffer;
+        array->Capacity = new_capacity;
     }
     auto length = array->Length;
     static_cast<GCObjectHandle *>(array->DataPtr)[length] = value;

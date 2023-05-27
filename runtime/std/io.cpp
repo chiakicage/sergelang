@@ -15,21 +15,19 @@ void print_object_internal(GCObjectHandle Handle);
 
 extern "C" void 
 __serge_panic(const char *msg) {
-    printf("[panic]: %s\n", msg);
+    fprintf(stderr, "[panic]: %s\n", msg);
     exit(1);
 }
 
 extern "C"
-const SergeUnit *__serge_print(const GCObjectHandle Handle) {
+void __serge_print(const GCObjectHandle Handle) {
     print_object_internal(Handle);
-    return __serge_alloc_unit();
 }
 
 extern "C"
-const SergeUnit *__serge_println(const GCObjectHandle Handle) {
+void __serge_println(const GCObjectHandle Handle) {
     print_object_internal(Handle);
     printf("\n");
-    return __serge_alloc_unit();
 }
 
 
@@ -51,7 +49,7 @@ SergeFloat64 *__serge_read_f64() {
 void serge_debug_dump_object(GCObjectHandle Handle) {
     switch (((SergeObject *)Handle)->MetaData.Kind) {
         case GCMetaData::Unit: {
-            printf("()");
+            printf("Unit ()\n");
             break;
         }
         case GCMetaData::String: {
@@ -95,7 +93,7 @@ namespace {
 void print_object_internal(GCObjectHandle Handle) {
     switch (((SergeObject *)Handle)->MetaData.Kind) {
         case GCMetaData::Unit: {
-            printf("()");
+            printf("Unit ()");
             break;
         }
         case GCMetaData::String: {

@@ -3,10 +3,10 @@
 #include "GCObject.h"
 
 extern "C"
-const SergeUnit *__serge_print(const GCObjectHandle Handle);
+void __serge_print(const GCObjectHandle Handle);
 
 extern "C"
-const SergeUnit *__serge_println(const GCObjectHandle Handle);
+void __serge_println(const GCObjectHandle Handle);
 
 extern "C"
 SergeInt32 *__serge_read_i32();

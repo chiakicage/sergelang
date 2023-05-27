@@ -133,14 +133,19 @@ void AllocatorImpl::mark() {
 
     for (; stack_pointer < stack_top; stack_pointer += sizeof(GCObjectHandle)) {
         GCObjectHandle ptr = *(GCObjectHandle *)stack_pointer;
+        fprintf(stderr, "object at %p: \n", ptr);
         if (Heaps.count(ptr)) {
             potential_root.push_back(ptr);
+            SERGE_DEBUG({ 
+                fprintf(stderr, "potential root object at %p: ", ptr);
+                serge_debug_dump_object(ptr);
+            });
         }
     }
     // Do mark
     for (auto root : potential_root) {
-            getMetaData(root).Mark = 1;
-            markReachableObject(root);        
+        getMetaData(root).Mark = 1;
+        markReachableObject(root);        
     }
 }
 
@@ -172,6 +177,9 @@ void *AllocatorImpl::allocate(size_t n) {
     if (unlikely(ptr == nullptr)) {
         __serge_panic("allocator failed");
     }
+    SERGE_DEBUG({
+        fprintf(stderr, "allocate object at %p, size = %ld\n", ptr, n);
+    });
     Heaps.insert(ptr);
     return ptr;
 }
@@ -186,18 +194,24 @@ void AllocatorImpl::deallocate(void *ptr) {
 }
 
 void AllocatorImpl::initialize_all() {
-    read_frame_pointer(stack_top);
+
+}
+
+// exposed allocator api implementation.
+extern "C"
+SergeUnit *__serge_user_main(void);
+
+extern "C"
+int main(int argc, char **argv) {
+    // we must set the stack top at the very first of the main function.
+    // otherwise some stack area will overlap with potential root.
+    read_frame_pointer(serge_allocator.stack_top);
+    serge_allocator.initialize_all();
+    __serge_user_main();
+    return 0;
 }
 
 
-// exposed allocator api implementation.
-
-extern "C" 
-void __serge_gc_init(void) {
-    /// \todo do some initialization works.
-    serge_allocator.initialize_all();
-    return;
-} 
 
 extern "C"
 void *__serge_alloc(size_t size) {

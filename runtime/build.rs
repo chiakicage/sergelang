@@ -86,7 +86,6 @@ fn main() {
         .file("wrapper/Array.cpp")
         .file("wrapper/Tuple.cpp")
         .file("wrapper/Unit.cpp")
-        .file("wrapper/Entry.cpp")
         .cpp(true)
         .cpp_link_stdlib(None) // cross compile, handle this below
         .compile("libsergeruntime_s.a");
