@@ -2,14 +2,35 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <sys/types.h>
+#include <csetjmp>
 #include <vector>
+#include <list>
+#include <unordered_set>
+
 #include "Utility.h"
 #include "GCObject.h"
 #include "Allocator.h"
 #include "io.h"
 
+#ifdef __x86_64
+#define read_frame_pointer(fp) __asm__ volatile("movq %%rbp, %0": "=r"(fp))
+#endif
+
+#ifdef __x86_64
+#define read_stack_pointer(sp) __asm__ volatile("movq %%rsp, %0": "=r"(sp))
+#endif
+
+
+#ifdef __riscv
+// use s0 as frame pointer, in calling convention, s0 also serves as saved register
+#define read_frame_pointer(fp) __asm__ volatile("mv %0, x8", "=r"(fp))
+#endif
+
+#ifdef __riscv
+#define read_stack_pointer(sp) __asm__ volatile("mv %0, x2", "=r"(sp))
+#endif
 
 
 
@@ -26,12 +47,12 @@ union FreeBlockList {
 namespace {
 
 struct AllocatorImpl {
-    // GC roots, the start end of GC process.
-    std::vector<GCObjectHandle>  GlobalVariable;
     // Trace all objects allocated by the heap
-    std::vector<GCObjectHandle> Heaps;
+    std::unordered_set<GCObjectHandle> Heaps;
     // Free lists.
     FreeBlockList *FreeListHead = nullptr;
+    // stack 
+    char *stack_top;
 
     // GC main process.
     void mark();
@@ -57,7 +78,7 @@ static void markArray(GCObjectHandle Handle) {
     SergeArray *Array = static_cast<SergeArray *>(Handle);
     GCObjectHandle *Data = (GCObjectHandle *)Array->DataPtr;
     int Length = Array->Length;
-    for (uint32_t i = 0; i < Length; ++i) {
+    for (int i = 0; i < Length; ++i) {
         markReachableObject(Data[i]);
     }
 }
@@ -66,7 +87,7 @@ static void markArray(GCObjectHandle Handle) {
 void markTuple(GCObjectHandle Handle) {
     SergeTuple *Tuple = static_cast<SergeTuple *>(Handle);
     int Length = Tuple->Length;
-    for (uint32_t i = 0; i < Length; ++i) {
+    for (int i = 0; i < Length; ++i) {
         markReachableObject(Tuple->Fields[i]);
     }
 }
@@ -100,22 +121,49 @@ void markReachableObject(GCObjectHandle Handle) {
 static AllocatorImpl serge_allocator;
 
 void AllocatorImpl::mark() {
-    for (auto Root : GlobalVariable) {
-        // mark all root variables reachable.
-        getMetaData(Root).Mark = 1;
-        markReachableObject(Root);
+    // search the stack and find the root
+    jmp_buf context;
+    setjmp(context);
+
+    // x86, riscv requires 16 aligned
+    char *stack_pointer = stack_top;
+    read_stack_pointer(stack_pointer);
+
+    std::vector<GCObjectHandle> potential_root;
+
+    for (; stack_pointer < stack_top; stack_pointer += sizeof(GCObjectHandle)) {
+        GCObjectHandle ptr = *(GCObjectHandle *)stack_pointer;
+        if (Heaps.count(ptr)) {
+            potential_root.push_back(ptr);
+        }
+    }
+    // Do mark
+    for (auto root : potential_root) {
+            getMetaData(root).Mark = 1;
+            markReachableObject(root);        
     }
 }
 
 void AllocatorImpl::sweep() {
-    for (auto Obj : Heaps) {
-        GCMetaData &MetaData = getMetaData(Obj);
+    std::vector<GCObjectHandle> Worklist;
+    for (auto OB : Heaps) {
+        GCMetaData &MetaData = getMetaData(OB);
         if (unlikely(MetaData.Mark != 1)) {
             SERGE_DEBUG({
-                serge_debug_dump_object(Obj);
+                fprintf(stderr, "gc collect object at %p: ", OB);
+                serge_debug_dump_object(OB);
             });
-            deallocate(Obj);
+            
+            Worklist.push_back(OB);
         }
+        // clear GC mark.
+        MetaData.Mark = 0;
+    }
+
+    // clean
+    for (auto Obj : Worklist) {
+        deallocate(Obj);
+        Heaps.erase(Obj);
     }
 }
 
@@ -123,7 +171,8 @@ void *AllocatorImpl::allocate(size_t n) {
     void *ptr = calloc(1, n);
     if (unlikely(ptr == nullptr)) {
         __serge_panic("allocator failed");
-    }    
+    }
+    Heaps.insert(ptr);
     return ptr;
 }
 
@@ -133,22 +182,13 @@ void AllocatorImpl::deallocate(void *ptr) {
         // handle object deallocation only, dispatch
         RawFree(array->DataPtr);
     }
-    free(ptr);
+    RawFree(ptr);
 }
 
 void AllocatorImpl::initialize_all() {
-    // Unit Object
-    GlobalVariable.reserve(AllocatorImpl::SIZE_OF_PERSISTENTPOOL);
-    SergeUnit *Unit = (SergeUnit *)RawMalloc(sizeof(SergeUnit));
-    Unit->MetaData.Kind = GCMetaData::Unit;
-
+    read_frame_pointer(stack_top);
 }
 
-extern "C"
-const SergeUnit *__serge_alloc_unit() {
-    return static_cast<SergeUnit *>
-        (serge_allocator.GlobalVariable[AllocatorImpl::Unit]);
-}
 
 // exposed allocator api implementation.
 
@@ -164,16 +204,6 @@ void *__serge_alloc(size_t size) {
     return serge_allocator.allocate(size);
 }
 
-extern "C"
-void __serge_free(void *ptr) {
-    serge_allocator.deallocate(ptr);
-}
-
-extern "C"
-void __serge_create_gc_root(void) {}
-
-extern "C"
-void __serge_drop_gc_root(void) {}
 
 /// runtime C ffi, triger GC manually
 /// we expect do full gc (all generation) by default.
@@ -181,10 +211,10 @@ void __serge_drop_gc_root(void) {}
 extern "C"
 void __serge_gc_collect(void) {
     serge_allocator.mark();
+    serge_allocator.sweep();
 }
 
 void *GCMalloc(size_t) alias("__serge_alloc");
-void GCFree(void *ptr) alias("__serge_free");
 
 /// \todo: we expect allocator API with GC has an internal generation optimization in the future,
 /// raw allocator API manages raw data buffers. This alias is a work-around now.

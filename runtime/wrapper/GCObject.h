@@ -25,17 +25,17 @@ struct GCMetaData {
         NumOfKind
     };
 
-    // (reserved) pointer to object metadata
+    // (reserved) pointer to object metadata, e.g. Klass in Java
     void                    *GCPointer;
     
     // GCObject Type
     enum GCObjectKind       Kind;
 
-    // (reserved) GC Tags
-    uint8_t                 Tag;
+    // mark and sweep GC objects marks.
+    uint8_t                 Mark;
 
-    // mark and sweep GC object marks.
-    uint16_t                Mark;
+    // bitmap
+    uint16_t                Tag;
 } __attribute__((packed));
 
 
@@ -115,17 +115,6 @@ typedef void *GCObjectHandle;
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
 
 
-/// Runtime API. When we enter a new domain, e.g. a new function,
-/// this will create a new root for the current program space.
-/// @TODO
-extern "C"
-void __serge_create_gc_root(void);
-
-//// Runtime API, should be paired with `__serge_drop_gc_root`,
-/// collect unused object created between create and drop gc root.
-/// @TODO
-extern "C"
-void __serge_drop_gc_root(void);
 
 template <typename T, typename K>
 bool isa(K value) {

@@ -84,6 +84,7 @@ void serge_debug_dump_object(GCObjectHandle Handle) {
             GCObjectHandle *data = Tuple->Fields;
             fprintf(stderr, 
                 "(tuple) {size = %d, field = %p}\n", size, data);
+            break;
         }
         default:
             __serge_panic("Unhandled print object!");

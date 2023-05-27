@@ -15,7 +15,7 @@ SergeUnit *__serge_user_main() {
     }
 
     __serge_println(array);
-    __serge_println(__serge_array_index(array, 1));
+    __serge_println(__serge_array_read_index(array, 1));
     SergeUnit *unit = (SergeUnit *)__serge_alloc_unit();
     return unit;
 }
