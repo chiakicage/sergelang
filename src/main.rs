@@ -1,7 +1,7 @@
 use ariadne::{sources, Color, Label, Report, ReportKind};
 use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
-
+use crate::utils::error::{get_code, get_msg};
 mod ast;
 mod backend;
 mod frontend;
@@ -197,10 +197,12 @@ fn main() {
         // .chain(vec![type_check_err].into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
-                .with_message(e.to_string())
+                .with_code(get_code(&e.to_string()))
+                .with_message(get_msg(&e.to_string()))
                 .with_label(
                     Label::new((filename.clone(), e.span().into_range()))
-                        .with_message(e.reason().to_string())
+                        // .with_message(e.reason().to_string())
+                        .with_message(get_msg(&e.to_string()))
                         .with_color(Color::Red),
                 )
                 .finish()
@@ -212,6 +214,11 @@ fn main() {
     let module = context.create_module("main");
     let builder = context.create_builder();
     let mut output_file = PathBuf::from("build/out.o");
+
+    match std::fs::create_dir_all("build") {
+        Ok(()) => println!("mkdir build success"),
+        Err(err) => println!("mkdir build failure: {}", err),
+    }
 
     let codegen = CodeGen::new(&context, &module, &builder);
     codegen.codegen();

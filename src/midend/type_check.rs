@@ -21,7 +21,8 @@ pub fn convert_type_str(ty: &TypeStr, ty_table: &SymTable<String, Enum>) -> Resu
                     if ty_table.contains_key(name) {
                         Type::Named(name.to_string())
                     } else {
-                        return Err(Error::custom(*span, format!("undefined type {}", name)));
+                        // "undefined type {}"
+                        return Err(Error::custom(*span, format!("00${}", name)));
                     }
                 }
             };
@@ -95,10 +96,8 @@ pub fn if_type_check<'src>(
 ) -> Result<TypedIf, Error> {
     let typed_cond = expr_type_check(cond, sym_table, ty_table, return_ty)?;
     if typed_cond.ty() != Type::Primitive(PrimitiveType::Bool) {
-        return Err(Error::custom(
-            cond.1,
-            format!("type of condition is {} but expected bool", typed_cond.ty()),
-        ));
+        // "type of condition is {} but expected bool"
+        return Err(Error::custom(cond.1, format!("01${}", typed_cond.ty())));
     }
     let then = match then.0 {
         Expr::Block(ref block) => block,
@@ -107,13 +106,10 @@ pub fn if_type_check<'src>(
     let ty_then = block_type_check(then, sym_table, ty_table, return_ty)?;
     let ty_els = else_type_check(&els, sym_table, ty_table, return_ty)?;
     if ty_then.ty != ty_els.ty() && els.is_some() {
+        // "type of then branch is {} and the type of else branch is {}",
         return Err(Error::custom(
-            then.1,
-            format!(
-                "type of then branch is {} and the type of else branch is {}",
-                ty_then.ty,
-                ty_els.ty()
-            ),
+            then.1, 
+            format!("02${}${}", ty_then.ty, ty_els.ty())
         ));
     }
     let ty = ty_then.ty.clone();
@@ -579,13 +575,10 @@ pub fn pattern_type_check<'src>(
         Pattern::Lit(lit) => {
             let lit = literal_type_check(lit)?;
             if lit.ty() != *expected_ty {
+                // "invalid pattern type, expected {}, got {}",
                 return Err(Error::custom(
-                    span,
-                    format!(
-                        "invalid pattern type, expected {}, got {}",
-                        expected_ty,
-                        lit.ty()
-                    ),
+                    span, 
+                    format!("03${}${}", expected_ty, lit.ty())
                 ));
             }
             Ok(TypedPattern::Lit(lit))
@@ -601,20 +594,15 @@ pub fn pattern_type_check<'src>(
             let tys = match expected_ty {
                 Type::Tuple(tys) => tys,
                 _ => {
-                    return Err(Error::custom(
-                        span,
-                        format!("invalid pattern type, expected tuple, got {}", expected_ty),
-                    ))
+                    // "invalid pattern type, expected tuple, got {}"
+                    return Err(Error::custom(span, format!("04${}", expected_ty)))
                 }
             };
             if tys.len() != pats.len() {
+                // "invalid pattern type, expected tuple of size {}, got {}"
                 return Err(Error::custom(
-                    span,
-                    format!(
-                        "invalid pattern type, expected tuple of size {}, got {}",
-                        tys.len(),
-                        pats.len()
-                    ),
+                    span, 
+                    format!("05${}${}", tys.len(), pats.len())
                 ));
             }
             let mut tuple = Vec::new();
@@ -631,39 +619,37 @@ pub fn pattern_type_check<'src>(
         } => {
             if let Type::Named(ty) = expected_ty {
                 if ty_name.0 != ty {
+                    // "invalid pattern type, expected {}, got {}"
                     return Err(Error::custom(
-                        span,
-                        format!("invalid pattern type, expected {}, got {}", ty, ty_name.0),
+                        span, 
+                        format!("06${}${}", ty, ty_name.0)
                     ));
                 }
             } else {
+                // "invalid pattern type, expected {}, got {}"
                 return Err(Error::custom(
-                    span,
-                    format!(
-                        "invalid pattern type, expected {}, got {}",
-                        expected_ty, ty_name.0
-                    ),
+                    span, 
+                    format!("07${}${}", expected_ty, ty_name.0),
                 ));
             }
             let ty = ty_table
                 .get(ty_name.0)
-                .ok_or_else(|| Error::custom(span, format!("enum {} not found", ty_name.0)))?;
+                // "enum {} not found"
+                .ok_or_else(|| Error::custom(span, format!("08${}", ty_name.0)))?;
             let ty_fields = ty
                 .ctors
                 .get(name.0)
-                .ok_or_else(|| Error::custom(span, format!("ctor {} not found in enum", name.0)))?;
+                // "ctor {} not found in enum"
+                .ok_or_else(|| Error::custom(span, format!("09${}", name.0)))?;
             if let Some(ty_fields) = ty_fields {
                 match ty_fields {
                     FieldsType::UnnamedFields(ty_fields) => {
                         if let Some(PatternFields::UnnamedFields(fields)) = fields {
                             if ty_fields.len() != fields.len() {
+                                // "invalid number of fields, expected {}, got {}"
                                 return Err(Error::custom(
-                                    span,
-                                    format!(
-                                        "invalid number of fields, expected {}, got {}",
-                                        ty_fields.len(),
-                                        fields.len()
-                                    ),
+                                    span, 
+                                    format!("0A${}${}", ty_fields.len(), fields.len())
                                 ));
                             }
                             let mut pat_fields = Vec::new();
@@ -678,29 +664,25 @@ pub fn pattern_type_check<'src>(
                                 fields: Some(pat_fields),
                             })
                         } else {
-                            Err(Error::custom(span, format!("expected nameless fields")))
+                            // "expected nameless fields"
+                            Err(Error::custom(span, format!("0B")))
                         }
                     }
                     FieldsType::NamedFields(ty_fields) => {
                         if let Some(PatternFields::NamedFields(fields)) = fields {
                             if ty_fields.len() != fields.len() {
+                                // "invalid number of fields, expected {}, got {}"
                                 return Err(Error::custom(
-                                    span,
-                                    format!(
-                                        "invalid number of fields, expected {}, got {}",
-                                        ty_fields.len(),
-                                        fields.len()
-                                    ),
+                                    span, 
+                                    format!("0C${}${}", ty_fields.len(), fields.len())
                                 ));
                             }
                             let mut pat_fields = HashMap::new();
                             for (name, pattern) in fields {
                                 if name.0 != "_" {
                                     let ty = ty_fields.get(name.0).ok_or_else(|| {
-                                        Error::custom(
-                                            name.1,
-                                            format!("field {} not found in enum", name.0),
-                                        )
+                                        // "field {} not found in enum"
+                                        Error::custom(name.1, format!("0D${}", name.0))
                                     })?;
                                     if let Some(pattern) = pattern {
                                         let pat = pattern_type_check(pattern, ty, ty_table)?;
@@ -718,13 +700,15 @@ pub fn pattern_type_check<'src>(
                                 fields: Some(pat_fields),
                             })
                         } else {
-                            Err(Error::custom(span, format!("expected named fields")))
+                            // "expected named fields"
+                            Err(Error::custom(span, format!("0E")))
                         }
                     }
                 }
             } else {
                 match fields {
-                    Some(_) => Err(Error::custom(span, format!("expected no fields"))),
+                    // "expected no fields"
+                    Some(_) => Err(Error::custom(span, format!("0F"))),
                     None => Ok(TypedPattern::Ctor {
                         ty_name: ty_name.0.to_string(),
                         name: name.0.to_string(),
@@ -797,7 +781,8 @@ pub fn expr_type_check<'src>(
                 };
                 Ok(TypedExpr::Variable(var))
             } else {
-                Err(Error::custom(*span, format!("undefined variable {}", name)))
+                // "undefined variable {}"
+                Err(Error::custom(*span, format!("10${}", name)))
             }
         }
         Expr::Tuple(exprs) => {
@@ -816,7 +801,8 @@ pub fn expr_type_check<'src>(
         }
         Expr::Array(exprs) => {
             if exprs.is_empty() {
-                return Err(Error::custom(span, "empty array is not allowed"));
+                // "empty array is not allowed"
+                return Err(Error::custom(span, "11"));
             }
 
             let ty = expr_type_check(&exprs[0], sym_table, ty_table, return_ty)?.ty();
@@ -824,10 +810,8 @@ pub fn expr_type_check<'src>(
             for expr in exprs {
                 let expr = expr_type_check(expr, sym_table, ty_table, return_ty)?;
                 if ty != expr.ty() {
-                    return Err(Error::custom(
-                        span,
-                        "array elements must have the same type",
-                    ));
+                    // "array elements must have the same type"
+                    return Err(Error::custom(span, "12"));
                 }
                 ty_exprs.push(expr);
             }
@@ -896,14 +880,10 @@ pub fn expr_type_check<'src>(
                 },
             };
             if ty == Type::Primitive(PrimitiveType::Unit) {
+                // "invalid types for binary operator {:?} between {:?} and {:?}"
                 Err(Error::custom(
-                    span,
-                    format!(
-                        "invalid types for binary operator {:?} between {:?} and {:?}",
-                        op,
-                        ty_lhs.ty(),
-                        ty_rhs.ty()
-                    ),
+                    span, 
+                    format!("13${:?}${:?}${:?}", op, ty_lhs.ty(), ty_rhs.ty())
                 ))
             } else {
                 Ok(TypedExpr::BinOp(TypedBinOp {
@@ -929,13 +909,10 @@ pub fn expr_type_check<'src>(
                 _ => unimplemented!(),
             };
             if ty == Type::Primitive(PrimitiveType::Unit) {
+                // "invalid types for unary operator {:?} on {:?}"
                 Err(Error::custom(
-                    span,
-                    format!(
-                        "invalid types for unary operator {:?} on {:?}",
-                        op,
-                        ty_rhs.ty()
-                    ),
+                    span, 
+                    format!("14${:?}${:?}", op, ty_rhs.ty())
                 ))
             } else {
                 Ok(TypedExpr::UnOp(TypedUnOp {
@@ -953,26 +930,20 @@ pub fn expr_type_check<'src>(
             let ty_func = expr_type_check(func, sym_table, ty_table, return_ty)?;
             if let Type::Func(params, ret_ty) = ty_func.ty() {
                 if params.len() != args.len() {
+                    // "invalid number of arguments, expected {}, got {}"
                     return Err(Error::custom(
-                        span,
-                        format!(
-                            "invalid number of arguments, expected {}, got {}",
-                            params.len(),
-                            args.len()
-                        ),
+                        span, 
+                        format!("15${}${}", params.len(), args.len())
                     ));
                 }
                 let mut ty_args = Vec::new();
                 for (param, arg) in params.iter().zip(args.iter()) {
                     let ty_arg = expr_type_check(arg, sym_table, ty_table, return_ty)?;
                     if *param != ty_arg.ty() {
+                        // "invalid argument type, expected {}, got {}"
                         return Err(Error::custom(
-                            arg.1,
-                            format!(
-                                "invalid argument type, expected {}, got {}",
-                                param,
-                                ty_arg.ty()
-                            ),
+                            arg.1, 
+                            format!("16${}${}", param, ty_arg.ty())
                         ));
                     }
                     ty_args.push(ty_arg);
@@ -983,10 +954,8 @@ pub fn expr_type_check<'src>(
                     ty: *ret_ty,
                 }))
             } else {
-                Err(Error::custom(
-                    func.1,
-                    format!("invalid function type {}", ty_func.ty()),
-                ))
+                // "invalid function type {}"
+                Err(Error::custom(func.1, format!("17${}", ty_func.ty())))
             }
         }
         Expr::Index { array, index } => {
@@ -995,10 +964,8 @@ pub fn expr_type_check<'src>(
             match ty_array.ty() {
                 Type::Array(ty) => {
                     if ty_index.ty() != Type::Primitive(PrimitiveType::Int) {
-                        return Err(Error::custom(
-                            index.1,
-                            format!("invalid index type {}", ty_index.ty()),
-                        ));
+                        // "invalid index type {}"
+                        return Err(Error::custom(index.1, format!("18${}", ty_index.ty())));
                     }
                     Ok(TypedExpr::Index(TypedIndex {
                         array: Box::new(ty_array),
@@ -1006,10 +973,8 @@ pub fn expr_type_check<'src>(
                         ty: *ty,
                     }))
                 }
-                _ => Err(Error::custom(
-                    array.1,
-                    format!("invalid array type {}", ty_array.ty()),
-                )),
+                // "invalid array type {}"
+                _ => Err(Error::custom(array.1, format!("19${}", ty_array.ty()))),
             }
         }
         Expr::Ctor {
@@ -1019,24 +984,23 @@ pub fn expr_type_check<'src>(
         } => {
             let ty = ty_table
                 .get(ty_name.0)
-                .ok_or_else(|| Error::custom(span, format!("type {} not found", ty_name.0)))?;
+                // "type {} not found"
+                .ok_or_else(|| Error::custom(span, format!("1A${}", ty_name.0)))?;
             let ctor_fields = ty
                 .ctors
                 .get(name.0)
-                .ok_or_else(|| Error::custom(span, format!("constructor {} not found", name.0)))?;
+                // "constructor {} not found"
+                .ok_or_else(|| Error::custom(span, format!("1B${}", name.0)))?;
 
             if let Some(ctor_fields) = ctor_fields {
                 match ctor_fields {
                     FieldsType::NamedFields(ctor_fields) => {
                         if let Some(ExprFields::NamedFields(fields)) = fields {
                             if ctor_fields.len() != fields.len() {
+                                // "invalid number of fields, expected {}, got {}"
                                 return Err(Error::custom(
-                                    span,
-                                    format!(
-                                        "invalid number of fields, expected {}, got {}",
-                                        ctor_fields.len(),
-                                        fields.len()
-                                    ),
+                                    span, 
+                                    format!("1C${}${}", ctor_fields.len(), fields.len())
                                 ));
                             }
 
@@ -1044,49 +1008,36 @@ pub fn expr_type_check<'src>(
                             for (name, val) in fields {
                                 if let Some(ty) = ctor_fields.get(name.0) {
                                     if ty_fields.contains_key(name.0) {
-                                        return Err(Error::custom(
-                                            name.1,
-                                            format!("field {} already set", name.0),
-                                        ));
+                                        // "field {} already set"
+                                        return Err(Error::custom(name.1, format!("1D${}", name.0)));
                                     }
 
                                     if let Some(val) = val {
                                         let ty_val =
                                             expr_type_check(val, sym_table, ty_table, return_ty)?;
                                         if *ty != ty_val.ty() {
+                                            // "invalid field type, expected {}, got {}"
                                             return Err(Error::custom(
-                                                val.1,
-                                                format!(
-                                                    "invalid field type, expected {}, got {}",
-                                                    ty,
-                                                    ty_val.ty()
-                                                ),
+                                                val.1, 
+                                                format!("1E${}${}", ty, ty_val.ty())
                                             ));
                                         }
                                         ty_fields.insert(name.0.to_string(), Some(ty_val));
                                     } else {
-                                        let ty_val = sym_table.get(name.0).ok_or_else(|| {
-                                            Error::custom(
-                                                name.1,
-                                                format!("variable {} not found", name.0),
-                                            )
-                                        })?;
+                                        // "variable {} not found"
+                                        let ty_val = sym_table.get(name.0).ok_or_else(|| Error::custom(name.1, format!("1F{}", name.0)))?;
                                         if *ty != *ty_val {
+                                            // "invalid field type, expected {}, got {}"
                                             return Err(Error::custom(
-                                                name.1,
-                                                format!(
-                                                    "invalid field type, expected {}, got {}",
-                                                    ty, ty_val
-                                                ),
+                                                name.1, 
+                                                format!("20${}${}", ty, ty_val)
                                             ));
                                         }
                                         ty_fields.insert(name.0.to_string(), None);
                                     }
                                 } else {
-                                    return Err(Error::custom(
-                                        name.1,
-                                        format!("invalid field name {}", name.0),
-                                    ));
+                                    // "invalid field name {}"
+                                    return Err(Error::custom(name.1, format!("21${}", name.0)));
                                 }
                             }
                             let ty_fields = TypedExprFields::NamedFields(ty_fields);
@@ -1097,19 +1048,17 @@ pub fn expr_type_check<'src>(
                                 ty: Type::Named(ty_name.0.to_string()),
                             }))
                         } else {
-                            Err(Error::custom(span, format!("expected named fields")))
+                            // "expected named fields"
+                            Err(Error::custom(span, format!("22")))
                         }
                     }
                     FieldsType::UnnamedFields(ctor_fields) => {
                         if let Some(ExprFields::UnnamedFields(fields)) = fields {
                             if ctor_fields.len() != fields.len() {
+                                // "invalid number of fields, expected {}, got {}"
                                 return Err(Error::custom(
-                                    span,
-                                    format!(
-                                        "invalid number of fields, expected {}, got {}",
-                                        ctor_fields.len(),
-                                        fields.len()
-                                    ),
+                                    span, 
+                                    format!("23${}${}", ctor_fields.len(), fields.len())
                                 ));
                             }
                             let mut ty_fields = Vec::new();
@@ -1117,13 +1066,10 @@ pub fn expr_type_check<'src>(
                                 let ty_val =
                                     expr_type_check(field, sym_table, ty_table, return_ty)?;
                                 if *ty != ty_val.ty() {
+                                    // "invalid field type, expected {}, got {}"
                                     return Err(Error::custom(
-                                        field.1,
-                                        format!(
-                                            "invalid field type, expected {}, got {}",
-                                            ty,
-                                            ty_val.ty()
-                                        ),
+                                        field.1, 
+                                        format!("24${}${}", ty, ty_val.ty())
                                     ));
                                 }
                                 ty_fields.push(ty_val);
@@ -1136,13 +1082,15 @@ pub fn expr_type_check<'src>(
                                 ty: Type::Named(ty_name.0.to_string()),
                             }))
                         } else {
-                            Err(Error::custom(span, format!("expected unnamed fields")))
+                            // "expected unnamed fields"
+                            Err(Error::custom(span, format!("25")))
                         }
                     }
                 }
             } else {
                 match fields {
-                    Some(_) => Err(Error::custom(span, format!("expected no fields"))),
+                    // "expected no fields"
+                    Some(_) => Err(Error::custom(span, format!("26"))),
                     None => Ok(TypedExpr::Ctor(TypedCtor {
                         ty_name: ty_name.0.to_string(),
                         name: name.0.to_string(),
@@ -1162,10 +1110,8 @@ pub fn expr_type_check<'src>(
                 | Type::Named(_)
                 | Type::Tuple(_) => {}
                 _ => {
-                    return Err(Error::custom(
-                        expr.1,
-                        format!("can't match type {}", ty_expr.ty()),
-                    ));
+                    // "can't match type {}"
+                    return Err(Error::custom(expr.1,format!("27${}", ty_expr.ty())));
                 }
             };
             let mut ty = None;
@@ -1176,9 +1122,10 @@ pub fn expr_type_check<'src>(
                 let ty_arm = expr_type_check(&arm.expr, &new_sym_table, ty_table, return_ty)?;
                 if let Some(ty) = ty.clone() {
                     if ty != ty_arm.ty() {
+                        // "invalid arm type, expected {}, got {}"
                         return Err(Error::custom(
-                            arm.expr.1,
-                            format!("invalid arm type, expected {}, got {}", ty, ty_arm.ty()),
+                            arm.expr.1, 
+                            format!("28${}${}", ty, ty_arm.ty())
                         ));
                     }
                 } else {
@@ -1194,7 +1141,8 @@ pub fn expr_type_check<'src>(
             if let Some(ty) = ty {
                 let pats = ty_arms.iter().map(|arm| &arm.pattern).collect::<Vec<_>>();
                 if pattern_non_exhaustive_check(&pats, &ty_expr.ty(), ty_table) {
-                    return Err(Error::custom(span, format!("pattern not exhaustive")));
+                    // "pattern not exhaustive"
+                    return Err(Error::custom(span, format!("29")));
                 }
                 Ok(TypedExpr::Match(TypedMatch {
                     expr: Box::new(ty_expr),
@@ -1202,7 +1150,8 @@ pub fn expr_type_check<'src>(
                     ty,
                 }))
             } else {
-                Err(Error::custom(span, format!("expected at least one arm")))
+                // "expected at least one arm"
+                Err(Error::custom(span, format!("2A")))
             }
         }
         Expr::Closure {
@@ -1228,13 +1177,10 @@ pub fn expr_type_check<'src>(
             let ty_body = expr_type_check(body, &sym_table, ty_table, &return_ty)?;
 
             if ty_body.ty() != return_ty {
+                // "invalid return type, expected {}, got {}"
                 return Err(Error::custom(
-                    body.1,
-                    format!(
-                        "invalid return type, expected {}, got {}",
-                        return_ty,
-                        ty_body.ty()
-                    ),
+                    body.1, 
+                    format!("2B${}${}", return_ty, ty_body.ty()),
                 ));
             }
             let ty_closure = TypedClosure {
@@ -1251,9 +1197,10 @@ pub fn expr_type_check<'src>(
             let ty = convert_type_str(&ty.0, ty_table)?;
             let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?;
             if ty != ty_rhs.ty() {
+                // "invalid rhs type, expected {}, got {}"
                 return Err(Error::custom(
                     rhs.1,
-                    format!("invalid rhs type, expected {}, got {}", ty, ty_rhs.ty()),
+                    format!("2C${}${}", ty, ty_rhs.ty()),
                 ));
             }
             let ty_let = TypedLet {
@@ -1266,14 +1213,8 @@ pub fn expr_type_check<'src>(
         Expr::While { cond, body } => {
             let ty_cond = expr_type_check(cond, sym_table, ty_table, return_ty)?;
             if ty_cond.ty() != Type::Primitive(PrimitiveType::Bool) {
-                return Err(Error::custom(
-                    cond.1,
-                    format!(
-                        "invalid condition type, expected {}, got {}",
-                        Type::Primitive(PrimitiveType::Bool),
-                        ty_cond.ty()
-                    ),
-                ));
+                // "invalid condition type, expected {}, got {}"
+                return Err(Error::custom(cond.1, format!("2D${}", ty_cond.ty()),));
             }
             let body = match body.0 {
                 Expr::Block(ref block) => block,
@@ -1281,10 +1222,8 @@ pub fn expr_type_check<'src>(
             };
             let ty_body = block_type_check(body, sym_table, ty_table, return_ty)?;
             if ty_body.ty != Type::Primitive(PrimitiveType::Unit) {
-                return Err(Error::custom(
-                    body.1,
-                    format!("invalid body type, expected no type, got {}", ty_body.ty),
-                ));
+                // "invalid body type, expected no type, got {}"
+                return Err(Error::custom(body.1, format!("2E${}", ty_body.ty)));
             }
             let ty_while = TypedWhile {
                 cond: Box::new(ty_cond),
@@ -1302,24 +1241,12 @@ pub fn expr_type_check<'src>(
             let ty_start = expr_type_check(start, sym_table, ty_table, return_ty)?;
             let ty_end = expr_type_check(end, sym_table, ty_table, return_ty)?;
             if ty_start.ty() != Type::Primitive(PrimitiveType::Int) {
-                return Err(Error::custom(
-                    start.1,
-                    format!(
-                        "invalid start type, expected {}, got {}",
-                        Type::Primitive(PrimitiveType::Int),
-                        ty_start.ty()
-                    ),
-                ));
+                // "invalid start type, expected {}, got {}"
+                return Err(Error::custom(start.1, format!("2F${}", ty_start.ty())));
             }
             if ty_end.ty() != Type::Primitive(PrimitiveType::Int) {
-                return Err(Error::custom(
-                    end.1,
-                    format!(
-                        "invalid end type, expected {}, got {}",
-                        Type::Primitive(PrimitiveType::Int),
-                        ty_end.ty()
-                    ),
-                ));
+                // "invalid end type, expected {}, got {}"
+                return Err(Error::custom(end.1, format!("30${}", ty_end.ty())));
             }
             let new_sym_table =
                 sym_table.insert(var.0.to_string(), Type::Primitive(PrimitiveType::Int));
@@ -1329,10 +1256,8 @@ pub fn expr_type_check<'src>(
             };
             let ty_body = block_type_check(body, &new_sym_table, ty_table, return_ty)?;
             if ty_body.ty != Type::Primitive(PrimitiveType::Unit) {
-                return Err(Error::custom(
-                    body.1,
-                    format!("invalid body type, expected no type, got {}", ty_body.ty),
-                ));
+                // "invalid body type, expected no type, got {}"
+                return Err(Error::custom(body.1, format!("31${}", ty_body.ty)));
             }
             let ty_for = TypedFor {
                 var: var.0.to_string(),
@@ -1353,12 +1278,10 @@ pub fn expr_type_check<'src>(
             };
 
             if ty_expr != *return_ty {
+                // "invalid return type, expected {}, got {}"
                 return Err(Error::custom(
                     span,
-                    format!(
-                        "invalid return type, expected {}, got {}",
-                        return_ty, ty_expr
-                    ),
+                    format!("32${}${}", return_ty, ty_expr),
                 ));
             }
             Ok(TypedExpr::Return(TypedReturn {
@@ -1371,16 +1294,15 @@ pub fn expr_type_check<'src>(
             let ty_var = if let Some(ty) = sym_table.get(name.0) {
                 Ok(ty.clone())
             } else {
-                Err(Error::custom(
-                    span,
-                    format!("undefined variable {}", name.0),
-                ))
+                // "undefined variable {}"
+                Err(Error::custom(span, format!("33${}", name.0)))
             }?;
             let ty_rhs = expr_type_check(rhs, sym_table, ty_table, return_ty)?;
             if ty_var != ty_rhs.ty() {
+                // "invalid rhs type, expected {}, got {}"
                 return Err(Error::custom(
                     rhs.1,
-                    format!("invalid rhs type, expected {}, got {}", ty_var, ty_rhs.ty()),
+                    format!("34${}${}", ty_var, ty_rhs.ty()),
                 ));
             }
             Ok(TypedExpr::Assign(TypedAssign {
@@ -1433,12 +1355,10 @@ pub fn func_type_check<'src>(
     let ty_body = block_type_check(body, &sym_table, ty_table, return_ty)?;
 
     if ty_body.ty != *return_ty {
+        // "invalid return type, expected {}, got {}"
         return Err(Error::custom(
             body.1,
-            format!(
-                "invalid return type, expected {}, got {}",
-                return_ty, ty_body.ty
-            ),
+            format!("35${}${}", return_ty, ty_body.ty),
         ));
     }
     let ty = Type::Func(
@@ -1469,16 +1389,12 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
                 let enum_name = name.0;
 
                 if fake_ty_table.contains_key(enum_name) {
-                    return Err(Error::custom(
-                        name.1,
-                        format!("enum {} already defined", enum_name),
-                    ));
+                    // "enum {} already defined"
+                    return Err(Error::custom(name.1, format!("36${}", enum_name)));
                 }
                 if is_primitive(enum_name) {
-                    return Err(Error::custom(
-                        name.1,
-                        format!("cannot use a primitive type {}", enum_name),
-                    ));
+                    // "cannot use a primitive type {}"
+                    return Err(Error::custom(name.1, format!("37${}", enum_name)));
                 }
                 fake_ty_table = fake_ty_table.insert(
                     enum_name.to_string(),
@@ -1516,10 +1432,8 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
                 let func_ty = Type::Func(arg_tys, Box::new(return_ty.clone()));
 
                 if sym_table.contains_key(func_name) {
-                    return Err(Error::custom(
-                        name.1,
-                        format!("function {} already defined", func_name),
-                    ));
+                    // "function {} already defined"
+                    return Err(Error::custom(name.1, format!("38${}", func_name)));
                 }
 
                 sym_table = sym_table.insert(func_name.to_string(), func_ty.clone());
@@ -1538,9 +1452,10 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
                 for (ctor, span) in ctors {
                     let ctor_name = ctor.name.0;
                     if ctors_map.contains_key(ctor_name) {
+                        // "ctor {} already defined in enum {}"
                         return Err(Error::custom(
                             *span,
-                            format!("ctor {} already defined in enum {}", ctor_name, enum_name),
+                            format!("39${}${}", ctor_name, enum_name),
                         ));
                     }
                     let fields = match &ctor.fields {
@@ -1567,10 +1482,8 @@ pub fn module_type_check<'src>(module: &Spanned<Module<'src>>) -> Result<TypedMo
                     ctors_map.insert(ctor_name.to_string(), fields);
                 }
                 if ctors_map.is_empty() {
-                    return Err(Error::custom(
-                        name.1,
-                        format!("enum {} must have at least one ctor", enum_name),
-                    ));
+                    // "enum {} must have at least one ctor"
+                    return Err(Error::custom(name.1, format!("3A{}", enum_name)));
                 }
                 let enum_ty = Enum {
                     name: enum_name.to_string(),
