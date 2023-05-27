@@ -269,6 +269,7 @@ impl TypedModule {
             .collect::<Vec<_>>();
 
         typed_ast.resolve_all_enums(enum_decls)?;
+        typed_ast.add_stdlib_functions();
         typed_ast.resolve_all_funcs(func_decls)?;
 
         Ok(typed_ast)
@@ -560,9 +561,7 @@ impl TypedModule {
                 if set.len() == ctors.len() {
                     let new_patterns = self.pattern_ctor_extract(
                         patterns,
-                        self.ty_ctx
-                            .get_typeref_by_name(&ty.name)
-                            .unwrap(),
+                        self.ty_ctx.get_typeref_by_name(&ty.name).unwrap(),
                     );
                     for (name, pats) in new_patterns {
                         let fields = ctors.get(&name).unwrap();
@@ -2011,5 +2010,28 @@ impl TypedModule {
 
         self.ty_ctx.refine_all_type();
         Ok(())
+    }
+    fn add_stdlib_functions(&mut self) {
+        let getint = self.ty_ctx.func_type(vec![], self.ty_ctx.get_i32());
+        let getch = self.ty_ctx.func_type(vec![], self.ty_ctx.get_char());
+        
+        let putint = self
+            .ty_ctx
+            .func_type(vec![self.ty_ctx.get_i32()], self.ty_ctx.get_unit());
+        let putch = self
+            .ty_ctx
+            .func_type(vec![self.ty_ctx.get_char()], self.ty_ctx.get_unit());
+
+        let starttime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
+        let stoptime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
+
+        self.func_table = self.func_table.insert("getint".to_string(), getint);
+        self.func_table = self.func_table.insert("getch".to_string(), getch);
+        self.func_table = self.func_table.insert("putint".to_string(), putint);
+        self.func_table = self.func_table.insert("putch".to_string(), putch);
+        self.func_table = self.func_table.insert("starttime".to_string(), starttime);
+        self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);
+
+
     }
 }

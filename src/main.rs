@@ -24,7 +24,7 @@ use inkwell::{
     OptimizationLevel,
 };
 
-use backend::CodeGen;
+// use backend::CodeGen;
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -207,7 +207,7 @@ fn main() {
                 .print(sources([(filename.clone(), src.clone())]))
                 .unwrap()
         });
-
+/*
     let context = Context::create();
     let module = context.create_module("main");
     let builder = context.create_builder();
@@ -285,5 +285,5 @@ fn main() {
             "::",
             output_file.with_extension("").as_os_str()
         );
-    }
+    }*/
 }

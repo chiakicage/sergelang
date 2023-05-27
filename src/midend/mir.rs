@@ -8,14 +8,13 @@ use std::{panic, vec};
 
 use crate::midend::typed_ast::*;
 use crate::utils::type_context::*;
+use crate::ast::ast::{BinOp, UnOp};
 
 use rpds::HashTrieMap;
 
 type SymTable<K, V> = HashTrieMap<K, V>;
 
 type Literal = TypedLiteral;
-type BinOp = TypedBinOp;
-type UnOp = TypedUnOp;
 
 new_key_type! {
     pub struct VarRef;
@@ -55,7 +54,7 @@ pub struct Block {
 }
 
 #[derive(Debug, Default, Clone)]
-struct Stmt {
+pub struct Stmt {
     pub left: Option<VarRef>,
     pub right: Option<Rvalue>
 }
@@ -99,3 +98,4 @@ pub struct MIR {
     pub name_ctx: SymTable<String, TypeRef>,
     pub module: Vec<Func>
 }
+

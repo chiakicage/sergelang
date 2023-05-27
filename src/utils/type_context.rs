@@ -8,8 +8,6 @@ use std::hash::{Hash, Hasher};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-//TODO: refactor type context
-
 new_key_type! {
     pub struct TypeRef;
 }
@@ -49,11 +47,6 @@ impl Hash for Enum {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// pub enum TypeReference {
-//     Named(String),
-//     Ref(TypeRef),
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -77,11 +70,6 @@ impl From<Enum> for Type {
         Type::Enum(ty)
     }
 }
-// impl From<TypeReference> for Type {
-//     fn from(ty: TypeReference) -> Self {
-//         Type::Reference(ty)
-//     }
-// }
 
 impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -96,7 +84,7 @@ impl fmt::Display for PrimitiveType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeContext {
     pub name_ref_map: HashMap<String, TypeRef>,
     pub type_ref_map: HashMap<Type, TypeRef>,
@@ -244,6 +232,9 @@ impl TypeContext {
     }
     pub fn get_typeref_by_name(&self, name: &str) -> Option<TypeRef> {
         self.name_ref_map.get(name).copied()
+    }
+    pub fn get_type_by_typeref(&self, key: TypeRef) -> Type {
+        self.types[key].clone()
     }
 
     fn subsititute_all_type(&mut self, src: TypeRef, target: TypeRef) {
