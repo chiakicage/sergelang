@@ -1,8 +1,9 @@
 pub use crate::midend::typed_ast::*;
+pub use crate::ast::*;
 pub use crate::utils::types::*;
 use chumsky::container::Seq;
 use rpds::HashTrieMap;
-use std::{collections::{HashMap, HashSet}, any::Any, sync::mpsc::SyncSender};
+use std::{collections::{HashMap, HashSet}, any::Any, sync::mpsc::SyncSender, env::temp_dir};
 
 type SymTable<K, V> = HashTrieMap<K, V>;
 
@@ -356,7 +357,7 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                 self.codegen_assign(&typeAssign, &mut block_sym_table, &mut block_sym_ptr_table);
                 return None;    
             }
-            TypedExpr::BinOp() => {
+            TypedExpr::BinOp(typeBinop) => {
                 
             }
             // TypedExpr::Block() => {
@@ -408,8 +409,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
             // TypedExpr::Tuple() => {
                 
             // }
-            TypedExpr::UnOp() => {
-                
+            TypedExpr::UnOp(typedUnOp) => {
+                return self.codegen_unOp(&typedUnOp, &mut block_sym_table, &mut block_sym_ptr_table);
             }
             TypedExpr::Variable(var) => {
                 if block_sym_table.get(&var.name) == None {
@@ -448,7 +449,67 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         block_sym_table : &mut SymTable<String, Type>, 
         block_sym_ptr_table : &mut SymTable<String, inkwell::values::PointerValue>) 
         -> Option<Type, inkwell::values::PointerValue> {
-
+    
+        let _rhs_res = self.codegen_expr(&typedUnOp.rhs, &mut block_sym_table, &mut block_sym_ptr_table);
+        
+        if let Some(rhs_res) = _rhs_res {
+            match typedUnOp.op {
+                UnOp::Neg => {
+                    let tmp_value = self.literal_unwrap(&typedUnOp.ty, &rhs_res.ptr);
+                    match &typedUnOp.ty {
+                        PrimitiveType::Int => {
+                            let zero_value = self.context.i32_type().const_zero();
+                            let tmp_result = self.builder.build_int_sub(zero_value, tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.struct_type(&[self.context.i32_type().into()], false), 
+                                "");
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return Some(TypedPointervalue::new(
+                                    &typedUnOp.ty,
+                                    &tmp_result_ptr,
+                                )
+                            );
+                        }
+                        PrimitiveType::Float => {
+                            let zero_value = self.context.f64_type().const_float(0);
+                            let tmp_result = self.builder.build_float_sub(zero_value, tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.struct_type(&[self.context.f64_type().into()], false), 
+                                "");
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return Some(TypedPointervalue::new(
+                                    &typedUnOp.ty,
+                                    &tmp_result_ptr,
+                                )
+                            );
+                        }
+                        _ => {return None;}
+                    }
+                    
+                }
+                UnOp::Not => {
+                    let tmp_value = self.literal_unwrap(&typedUnOp.ty, &rhs_res.ptr);
+                    match &typedUnOp.ty {
+                        PrimitiveType::Bool => {
+                            let tmp_result = self.builder.build_not(tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.struct_type(&[self.context.bool_type().into()], false), 
+                                "",
+                            );
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return Some(TypedPointervalue::new(
+                                    &typedUnOp.ty,
+                                    &tmp_result_ptr,
+                                )
+                            );
+                        }
+                        _ =>{return None;}
+                    }
+                }
+                _ => {return None;}
+            }
+        }
+        
     }
     pub fn codegen_call(&self, typedCall : &TypedCall, 
         mut block_sym_table : &mut SymTable<String, Type>, 
