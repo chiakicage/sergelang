@@ -8,8 +8,6 @@ use std::hash::{Hash, Hasher};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-//TODO: refactor type context
-
 new_key_type! {
     pub struct TypeRef;
 }
@@ -49,11 +47,6 @@ impl Hash for Enum {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// pub enum TypeReference {
-//     Named(String),
-//     Ref(TypeRef),
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -77,11 +70,6 @@ impl From<Enum> for Type {
         Type::Enum(ty)
     }
 }
-// impl From<TypeReference> for Type {
-//     fn from(ty: TypeReference) -> Self {
-//         Type::Reference(ty)
-//     }
-// }
 
 impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -96,7 +84,7 @@ impl fmt::Display for PrimitiveType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeContext {
     pub name_ref_map: HashMap<String, TypeRef>,
     pub type_ref_map: HashMap<Type, TypeRef>,
@@ -135,10 +123,6 @@ impl TypeContext {
                 s.push_str(&self.typeref_to_string(*ret));
                 s
             }
-            // Type::Reference(ty) => match ty {
-            //     TypeReference::Named(name) => name.clone(),
-            //     TypeReference::Ref(ty) => self.typeref_to_string(ty),
-            // },
             Type::Tuple(types) => {
                 let mut s = String::new();
                 s.push_str("(");
@@ -185,6 +169,25 @@ impl TypeContext {
             _ => panic!("unknown primitive type"),
         }
     }
+
+    pub fn get_i32(&self) -> TypeRef {
+        self.get_primitive("i32")
+    }
+    pub fn get_f64(&self) -> TypeRef {
+        self.get_primitive("f64")
+    }
+    pub fn get_bool(&self) -> TypeRef {
+        self.get_primitive("bool")
+    }
+    pub fn get_char(&self) -> TypeRef {
+        self.get_primitive("char")
+    }
+    pub fn get_str(&self) -> TypeRef {
+        self.get_primitive("str")
+    }
+    pub fn get_unit(&self) -> TypeRef {
+        self.get_primitive("unit")
+    }
     pub fn enum_type(&mut self, ty: Enum) -> TypeRef {
         let type_ref = self.types.insert(ty.clone().into());
         // self.type_ref_map.insert(ty.clone().into(), type_ref);
@@ -201,10 +204,15 @@ impl TypeContext {
     pub fn func_type(&mut self, params: Vec<TypeRef>, ret: TypeRef) -> TypeRef {
         // let type_ref = self.types.insert(Type::Callable { params, ret });
         let ty = Type::Callable { params, ret };
-        self.insert_type_or_get(ty)
+        self.get_or_insert_type(ty)
     }
 
-    pub fn insert_type_or_get(&mut self, ty: Type) -> TypeRef {
+    pub fn tuple_type(&mut self, types: Vec<TypeRef>) -> TypeRef {
+        let ty = Type::Tuple(types);
+        self.get_or_insert_type(ty)
+    }
+    
+    pub fn get_or_insert_type(&mut self, ty: Type) -> TypeRef {
         if let Some(ty_ref) = self.type_ref_map.get(&ty) {
             return *ty_ref;
         }
@@ -212,11 +220,21 @@ impl TypeContext {
         self.type_ref_map.insert(ty, ty_ref);
         ty_ref
     }
+    pub fn get_enum_by_typeref(&self, key: TypeRef) -> Option<&Enum> {
+        if let Type::Enum(ty) = &self.types[key] {
+            return Some(ty);
+        } else {
+            return None;
+        }
+    }
     pub fn get_typeref_by_type(&self, ty: Type) -> Option<TypeRef> {
         self.type_ref_map.get(&ty).copied()
     }
     pub fn get_typeref_by_name(&self, name: &str) -> Option<TypeRef> {
         self.name_ref_map.get(name).copied()
+    }
+    pub fn get_type_by_typeref(&self, key: TypeRef) -> Type {
+        self.types[key].clone()
     }
 
     fn subsititute_all_type(&mut self, src: TypeRef, target: TypeRef) {
@@ -321,7 +339,7 @@ impl TypeContext {
                     .collect::<Result<Vec<_>, _>>()?;
                 let ret = self.convert_type_str(&ret.0)?;
                 let ty = Type::Callable { params, ret };
-                Ok(self.insert_type_or_get(ty))
+                Ok(self.get_or_insert_type(ty))
             }
             TypeStr::Tuple(tys) => {
                 let tys = tys
@@ -329,12 +347,25 @@ impl TypeContext {
                     .map(|(t, _)| self.convert_type_str(t))
                     .collect::<Result<Vec<_>, _>>()?;
                 let ty = Type::Tuple(tys);
-                Ok(self.insert_type_or_get(ty))
+                Ok(self.get_or_insert_type(ty))
             }
             TypeStr::Array(ty) => {
                 let ty = self.convert_type_str(&ty.0)?;
-                Ok(self.insert_type_or_get(Type::Array(ty)))
+                Ok(self.get_or_insert_type(Type::Array(ty)))
             }
         }
     }
+
+    pub fn check_ty_can_be_matched(&self, ty: TypeRef) -> bool {
+        match &self.types[ty] {
+            Type::Primitive(PrimitiveType::Unit) => false,
+            Type::Primitive(_) => true,
+            Type::Enum(_) => true,
+            Type::Callable { .. } => false,
+            Type::Tuple(_) => true,
+            Type::Array(_) => false,
+            Type::Opaque(_) => unreachable!(),
+        }
+    }
+
 }
