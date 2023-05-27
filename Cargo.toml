@@ -15,3 +15,5 @@ serge_runtime = { path = "runtime", version = "0.1.0" }
 slotmap = "1.0.6"
 strum = { version = "0.24.1", features = ["derive"] }
 strum_macros = "0.24.3"
+llvm-sys = "150"
+libc = "0.2"
