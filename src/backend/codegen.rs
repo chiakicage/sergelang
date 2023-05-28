@@ -125,43 +125,41 @@ impl<'a> CodeGen<'a> {
     }
 
     fn create_terminators(&self, blocks: &SlotMap<BlockRef, Block>) {
-        unsafe {
-            let function_state = self.function.as_ref().unwrap();
-            let ret_ptr = function_state.ret_ptr;
-            let block_map = &function_state.block_map;
+        let function_state = self.function.as_ref().unwrap();
+        let ret_ptr = function_state.ret_ptr;
+        let block_map = &function_state.block_map;
 
-            for (block_ref, block) in blocks {
-                let current_bb = block_map.get(&block_ref).unwrap().clone();
-                // insert at the end of bb.
-                self.set_insert_point_before_terminator(current_bb);
-                match &block.terminator {
-                    Terminator::Branch(cond, then, or) => {
-                        // should be bool type
-                        let cond = self.create_raw_operand(cond);
-                        unsafe {
-                            LLVMBuildCondBr(self.builder, 
-                                            cond, 
-                                            block_map.get(then).unwrap().clone(), 
-                                            block_map.get(or).unwrap().clone());
-                        }
+        for (block_ref, block) in blocks {
+            let current_bb = block_map.get(&block_ref).unwrap().clone();
+            // insert at the end of bb.
+            self.set_insert_point_before_terminator(current_bb);
+            match &block.terminator {
+                Terminator::Branch(cond, then, or) => {
+                    // should be bool type
+                    let cond = self.create_raw_operand(cond);
+                    unsafe {
+                        LLVMBuildCondBr(self.builder, 
+                                        cond, 
+                                        block_map.get(then).unwrap().clone(), 
+                                        block_map.get(or).unwrap().clone());
                     }
-                    Terminator::Jump(blockref) => {
-                        let target_bb = block_map.get(blockref).unwrap().clone();
-                        unsafe {
-                            LLVMBuildBr(self.builder, target_bb);
-                        }
-                    }
-                    Terminator::Return => {
-                        unsafe {
-                            let ret_val = LLVMBuildLoad2(self.builder, 
-                                            self.object_ptr_type(),
-                                                ret_ptr,
-                                            "".as_ptr() as *const i8);
-                            LLVMBuildRet(self.builder, ret_val);
-                        }
-                    }
-                    _ => { panic!("not implemented"); }
                 }
+                Terminator::Jump(blockref) => {
+                    let target_bb = block_map.get(blockref).unwrap().clone();
+                    unsafe {
+                        LLVMBuildBr(self.builder, target_bb);
+                    }
+                }
+                Terminator::Return => {
+                    unsafe {
+                        let ret_val = LLVMBuildLoad2(self.builder, 
+                                        self.object_ptr_type(),
+                                            ret_ptr,
+                                        "".as_ptr() as *const i8);
+                        LLVMBuildRet(self.builder, ret_val);
+                    }
+                }
+                _ => { panic!("not implemented"); }
             }
         }
     }
