@@ -39,7 +39,6 @@ pub struct Func {
 
     pub entry: BlockRef,
     pub exit: BlockRef,
-    pub panic: BlockRef,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -68,7 +67,6 @@ pub enum Terminator {
     Branch(Operand, BlockRef, BlockRef),
     Jump(BlockRef),
     Return,
-    Panic,
 }
 
 #[derive(Debug, Clone)]
@@ -152,19 +150,14 @@ impl<'ctx> FuncBuilder<'ctx> {
     ) -> Self {
         let mut blocks = SlotMap::with_key();
         let exit = blocks.insert(Block {
-            name: "exit".to_string(),
+            name: format!("{}_exit", prefix),
             stmts: Vec::new(),
             terminator: Terminator::Return,
         });
         let entry = blocks.insert(Block {
-            name: "entry".to_string(),
+            name: format!("{}_entry", prefix),
             stmts: Vec::new(),
             terminator: Terminator::Jump(exit),
-        });
-        let panic = blocks.insert(Block {
-            name: "panic".to_string(),
-            stmts: Vec::new(),
-            terminator: Terminator::Panic,
         });
         let mut variables = SlotMap::with_key();
         let mut name_ctx = SymTable::new();
@@ -211,7 +204,6 @@ impl<'ctx> FuncBuilder<'ctx> {
             return_value,
             entry,
             exit,
-            panic,
         };
 
         let namer = BlockNamer::new(prefix);
@@ -249,7 +241,7 @@ impl<'ctx> FuncBuilder<'ctx> {
         let block = Block {
             name,
             stmts: Vec::new(),
-            terminator: Terminator::Panic,
+            terminator: Terminator::Jump(self.func.exit),
         };
         self.func.blocks.insert(block)
     }
@@ -431,9 +423,9 @@ impl<'ctx> FuncBuilder<'ctx> {
         let name_var_map = self.name_var_map.clone();
         let mut last_value = None;
         for expr in &block.exprs {
-            let value = self.build_expr(expr).unwrap();
+            let value = self.build_expr(expr);
             if expr.ty != self.ty_ctx.get_unit() {
-                last_value = Some(value);
+                last_value = value;
             } else {
                 last_value = None;
             }

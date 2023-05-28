@@ -25,9 +25,9 @@ use libc::*;
 use backend::codegen::CodeGen;
 
 use std::ffi::OsStr;
+use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
-use std::mem::MaybeUninit;
 
 fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Output, String> {
     use std::process::Command;
@@ -49,7 +49,6 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
         .map_err(|e| e.to_string())
 }
 
-
 fn emit_object(module: LLVMModuleRef) {
     unsafe {
         let opt_level = LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault;
@@ -59,31 +58,44 @@ fn emit_object(module: LLVMModuleRef) {
         let triple = "riscv64-unknown-linux-gnu";
         let target = null_mut::<LLVMTargetRef>();
         let mut error_string = MaybeUninit::uninit();
-        let return_code = LLVMGetTargetFromTriple(triple.as_ptr() as *const i8, 
-                                  target,
-                                    error_string.as_mut_ptr());
+        println!("set target machine");
+        let return_code = LLVMGetTargetFromTriple(
+            triple.as_ptr() as *const i8,
+            target,
+            error_string.as_mut_ptr(),
+        );
         let cpu = "generic";
-        let target_machine = LLVMCreateTargetMachine(*target,
-                                            triple.as_ptr() as *const i8,
-                                    cpu.as_ptr() as *const c_char,
-                                "".as_ptr() as *const c_char,
-                                    opt_level,
-                                    reloc_mode,
-                                    code_model);
+        let target_machine = LLVMCreateTargetMachine(
+            *target,
+            triple.as_ptr() as *const i8,
+            cpu.as_ptr() as *const c_char,
+            "".as_ptr() as *const c_char,
+            opt_level,
+            reloc_mode,
+            code_model,
+        );
 
+       
         // run passes
         let pass_options = LLVMCreatePassBuilderOptions();
         LLVMPassBuilderOptionsSetDebugLogging(pass_options, 1);
-   
-        LLVMRunPasses(module, "default<O2>".as_ptr() as *const i8, target_machine, pass_options);
+
+        LLVMRunPasses(
+            module,
+            "default<O2>".as_ptr() as *const i8,
+            target_machine,
+            pass_options,
+        );
         // emit object fie
         let file_type = LLVMCodeGenFileType::LLVMObjectFile;
         let mut err_message = MaybeUninit::uninit();
-        let return_code = LLVMTargetMachineEmitToFile(target_machine, 
-                                                            module, 
-                                                            "output.o".as_ptr() as *mut i8, 
-                                                            file_type, 
-                                                            err_message.as_mut_ptr());
+        let return_code = LLVMTargetMachineEmitToFile(
+            target_machine,
+            module,
+            "output.o".as_ptr() as *mut i8,
+            file_type,
+            err_message.as_mut_ptr(),
+        );
     }
 }
 
@@ -112,23 +124,22 @@ fn main() {
                     // println!("{:#?}", typed_ast);
                     let mut mir = MIR::create_from_typed_ast(&typed_ast);
                     println!("generate middle IR");
+                    println!("{:#?}", mir);
                     // println!("{:#?}", mir);
-                    let mut llvm_ir_codegen = CodeGen::new(
-                        &mir.name_ctx,
-                        &mir.ty_ctx
-                    );
+                    let mut llvm_ir_codegen = CodeGen::new(&mir.name_ctx, &mir.ty_ctx);
                     llvm_ir_codegen.create_module(&mir);
                     // emit LLVM IR file
                     unsafe {
                         let mut err_string = MaybeUninit::uninit();
-                        LLVMPrintModuleToFile(llvm_ir_codegen.module, 
-                                                "a.ll".as_ptr() as *const i8,
-                                                 err_string.as_mut_ptr());
+                        LLVMPrintModuleToFile(
+                            llvm_ir_codegen.module,
+                            "a.ll".as_ptr() as *const i8,
+                            err_string.as_mut_ptr(),
+                        );
                     }
                     // emit object
                     emit_object(llvm_ir_codegen.module);
                     // call linker here
-
                 }
                 Err(err) => {
                     errs.push(err);
@@ -162,5 +173,4 @@ fn main() {
                 .print(sources([(filename.clone(), src.clone())]))
                 .unwrap()
         });
-
 }
