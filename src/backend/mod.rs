@@ -86,8 +86,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
 
     pub fn codegen_module(&self, typedast : &TypedModule) {
 
-        for func in typedast.func_defs {
-            self.codegen_func(&func);
+        for mut func in &typedast.func_defs {
+            self.codegen_func(&mut func);
         }
 
     }
@@ -352,11 +352,11 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
     //     }
     // }
 
-    pub fn codegen_func(&self, typedFunc : &TypedFunc) {
+    pub fn codegen_func(&self, typedFunc : &mut TypedFunc) {
         // set up local symbol table for every level of block
         let return_ty = self.type2struct_type(&typedFunc.return_ty);
-        let param_types :Vec<BasicMetadataTypeEnum> = Vec::new();
-        for single_type in typedFunc.params {
+        let mut param_types :Vec<BasicMetadataTypeEnum> = Vec::new();
+        for single_type in &typedFunc.params {
             param_types.push(inkwell::types::BasicMetadataTypeEnum::PointerType(
                     self.type2struct_type(&single_type.1).ptr_type(AddressSpace::default())
                 )
@@ -366,7 +366,7 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         let fn_type = return_ty.fn_type(&param_types, false);
         let fn_value = self.module.add_function(&typedFunc.name, fn_type, None);
         
-        self.func_name_table.insert(typedFunc.name, fn_value.clone());
+        self.func_name_table.insert(typedFunc.name.clone(), fn_value.clone());
 
         let mut local_sym_table : SymTable<String, Type> = SymTable::new();
         let mut local_sym_ptr_table : SymTable<String, inkwell::values::PointerValue> = SymTable::new();
@@ -458,8 +458,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
             TypedExpr::Literal(literal) => {
                 return Some(
                     TypedPointervalue::new(
-                        &literal.ty(), 
-                        &self.literal_create_wrapper(literal)
+                        &literal.ty().clone(), 
+                        &self.literal_create_wrapper(literal).clone()
                     )
                 );
             }
@@ -479,14 +479,14 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
             TypedExpr::Variable(var) => {
                 if block_sym_table.get(&var.name) == None {
                     block_sym_table.insert(
-                        var.name,
-                        var.ty
+                        var.name.clone(),
+                        var.ty.clone()
                     );
                     let var_ptr_type = self.type2struct_type(&var.ty);
                     let var_ptr = self.builder.build_alloca(var_ptr_type, &var.name);
                     block_sym_ptr_table.insert(
-                        var.name,
-                        var_ptr,
+                        var.name.clone(),
+                        var_ptr.clone(),
                         // symbol table generation, ptr for all
                     );
                 }
@@ -1026,39 +1026,42 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         
         match (typedCall.func, typedCall.ty) {
             (var, Type::Func(in_arg, out_arg)) => {
-                let mut fn_value;
                 match *var {
                     TypedExpr::Variable(variable) => {
                         if let Some(_fn_value) = self.func_name_table.get(&variable.name){
-                            fn_value = _fn_value.clone();
+                            let fn_value = _fn_value.clone();
+                            let mut params :Vec<BasicMetadataValueEnum> = Vec::new();
+                
+                            for arg in &typedCall.args {
+                                if let Some(type_ptr) = self.codegen_expr(&arg, &mut block_sym_table, &mut block_sym_ptr_table) {
+                                    params.push(BasicMetadataValueEnum::PointerValue(type_ptr.ptr.to_owned()));
+                                }
+                            }
+
+                            let call_result = &self.builder.build_call(fn_value, &params, "");
+                            let real_result = call_result.try_as_basic_value();
+                            if real_result.is_right(){
+                                return None;
+                            }
+                            else  {
+                                let real_real_result = real_result.left().unwrap().into_struct_value();
+                                let real_real_result_ptr = self.builder.build_alloca(real_real_result.get_type(), "");
+                                self.builder.build_store(real_real_result_ptr.clone(), real_real_result);
+                                return Some(TypedPointervalue::new(
+                                        &out_arg,
+                                        &real_real_result_ptr.clone(),
+                                        )
+                                    );
+                            }
+                        }
+                        else {
+                            return None;
                         }
                     }
-                    _ => {}
+                    _ => {return None;}
                 }
                 
-                let mut params :Vec<BasicMetadataValueEnum> = Vec::new();
                 
-                for arg in typedCall.args {
-                    if let Some(type_ptr) = self.codegen_expr(&arg, &mut block_sym_table, &mut block_sym_ptr_table) {
-                        params.push(BasicMetadataValueEnum::PointerValue(type_ptr.ptr.to_owned()));
-                    }
-                }
-
-                let call_result = &self.builder.build_call(fn_value, &params, "");
-                let real_result = call_result.try_as_basic_value();
-                if real_result.is_right(){
-                    return None;
-                }
-                else  {
-                    let real_real_result = real_result.left().unwrap().into_struct_value();
-                    let real_real_result_ptr = self.builder.build_alloca(real_real_result.get_type(), "");
-                    self.builder.build_store(real_real_result_ptr.clone(), real_real_result);
-                    return Some(TypedPointervalue::new(
-                            &out_arg,
-                            &real_real_result_ptr.clone(),
-                            )
-                        );
-                }
 
             }
             _ => {
@@ -1073,8 +1076,8 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         if let Some(expr) = &typeReturn.expr.as_ref() {
             let _type_ptr = self.codegen_expr(&expr, &mut block_sym_table, &mut block_sym_ptr_table);
             if let Some(type_ptr) = _type_ptr {
-                let mut pointee_type_int : IntValue;
-                let mut pointee_type_float : FloatValue;
+                let mut pointee_type_int = self.context.i32_type();
+                let mut pointee_type_float = self.context.f64_type();
                 let mut float_flag : i32 = 0;
                 if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                     float_flag = 1;
@@ -1093,10 +1096,10 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                 }
                 let mut return_value;
                 if float_flag == 1{
-                    return_value = self.builder.build_load(pointee_type_float, &type_ptr.ptr, "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_float, type_ptr.ptr.to_owned(), "").into_struct_value();
                 }
                 else {
-                    return_value = self.builder.build_load(pointee_type_int, &type_ptr.ptr, "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_int, type_ptr.ptr.to_owned(), "").into_struct_value();
                 }
                 
                 self.builder.build_return(Some(&return_value));
@@ -1114,14 +1117,14 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         mut block_sym_table : &mut SymTable<String, Type>, 
         mut block_sym_ptr_table : &mut SymTable<String, inkwell::values::PointerValue>) {
         
-        let var_name = &typeLet.name;
+        let var_name = &typeLet.name.clone();
         if block_sym_table.get(var_name) == None {
             block_sym_table.insert(
-                typeLet.name,
-                typeLet.ty
+                typeLet.name.clone(),
+                typeLet.ty.clone()
             );
-            let var_ptr_type = self.type2struct_type(&typeLet.ty);
-            let var_ptr = self.builder.build_alloca(var_ptr_type, &typeLet.name);
+            let var_ptr_type = self.type2struct_type(&typeLet.ty.clone());
+            let var_ptr = self.builder.build_alloca(var_ptr_type, &typeLet.name.clone());
             block_sym_ptr_table.insert(
                 typeLet.name,
                 var_ptr,
@@ -1129,17 +1132,17 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
             );
         }
 
-        let _var_type = block_sym_table.get(var_name);
+        let mut _var_type = block_sym_table.get(var_name);
 
-        let _var_ptr = block_sym_ptr_table.get(var_name);
+        let mut _var_ptr = block_sym_ptr_table.get(var_name);
 
         let _rhs = self.codegen_expr(&typeLet.rhs, &mut block_sym_table, &mut block_sym_ptr_table);
 
         if let Some(var_type) = _var_type {
             if let Some(var_ptr) = _var_ptr {
                 if let Some(rhs_result) = _rhs {
-                    let mut pointee_type_int : IntValue;
-                    let mut pointee_type_float : FloatValue;
+                    let mut pointee_type_int = self.context.i32_type();
+                    let mut pointee_type_float = self.context.f64_type();
                     let mut float_flag : i32 = 0;
                     if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                         float_flag = 1;
@@ -1158,10 +1161,10 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                     }
                     let mut return_value;
                     if float_flag == 1{
-                        return_value = self.builder.build_load(pointee_type_float, &rhs_result.ptr, "").into_struct_value();
+                        return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned(), "").into_struct_value();
                     }
                     else {
-                        return_value = self.builder.build_load(pointee_type_int, &rhs_result.ptr, "").into_struct_value();
+                        return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned(), "").into_struct_value();
                     }
                     
                 
@@ -1184,18 +1187,18 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
         if let Some(var_ptr) = _var_ptr {
             if let Some(rhs_result) = _rhs {
                 
-                let mut pointee_type_int : IntValue;
-                let mut pointee_type_float : FloatValue;
+                let mut pointee_type_int = self.context.i32_type();
+                let mut pointee_type_float = self.context.f64_type();
                 let mut float_flag : i32 = 0;
                 if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                     float_flag = 1;
                     pointee_type_float = self.context.f64_type();
                 }
                 else {
-                    if(rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int)){
+                    if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int) {
                         pointee_type_int = self.context.i32_type();
                     }
-                    else if(rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char)){
+                    else if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char ){
                         pointee_type_int = self.context.i8_type();
                     }
                     else {
@@ -1204,10 +1207,10 @@ impl<'ctx, 'a> CodeGen<'ctx, 'a> {
                 }
                 let mut return_value;
                 if float_flag == 1{
-                    return_value = self.builder.build_load(pointee_type_float, &rhs_result.ptr, "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned(), "").into_struct_value();
                 }
                 else {
-                    return_value = self.builder.build_load(pointee_type_int, &rhs_result.ptr, "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned(), "").into_struct_value();
                 }
                 
                 self.builder.build_store(var_ptr.to_owned(), return_value);
