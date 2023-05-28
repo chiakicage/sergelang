@@ -83,6 +83,7 @@ fn main() {
     cfg.file("wrapper/Allocator.cpp")
         .file("wrapper/Int.cpp")
         .file("wrapper/Float.cpp")
+        .file("wrapper/Bool.cpp")
         .file("wrapper/Array.cpp")
         .file("wrapper/Tuple.cpp")
         .file("wrapper/Unit.cpp")
