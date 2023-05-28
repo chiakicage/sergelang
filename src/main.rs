@@ -26,7 +26,7 @@ use libc::*;
 use backend::codegen::CodeGen;
 use utils::to_c_str;
 
-use std::ffi::OsStr;
+use std::ffi::{CString, OsStr};
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
@@ -64,19 +64,27 @@ fn emit_object(module: LLVMModuleRef) {
         let reloc_mode = LLVMRelocMode::LLVMRelocPIC;
         let code_model = LLVMCodeModel::LLVMCodeModelDefault;
         // set target machine
-        let triple = "riscv64-unknown-linux-gnu";
-        let target = null_mut::<LLVMTargetRef>();
+        let triple = LLVMCreateMessage(to_c_str("riscv64-unknown-linux-gnu").as_ptr() as *const _);
+        LLVMSetTarget(module, triple);
+
+        // create target.
+        let mut target = std::ptr::null_mut();
         let mut error_string = MaybeUninit::uninit();
-        println!("set target machine");
         let return_code = LLVMGetTargetFromTriple(
-            to_c_str(triple).as_ptr(),
-            target,
+            triple,
+            &mut target,
             error_string.as_mut_ptr(),
         );
+        if return_code != 0 {
+            puts(*error_string.as_ptr());
+            exit(1);
+        }
+
+        // create target machine.
         let cpu = "generic";
         let target_machine = LLVMCreateTargetMachine(
-            *target,
-            to_c_str(triple).as_ptr(),
+            target,
+            triple,
             to_c_str(cpu).as_ptr(),
             to_c_str("").as_ptr(),
             opt_level,
@@ -105,6 +113,10 @@ fn emit_object(module: LLVMModuleRef) {
             file_type,
             err_message.as_mut_ptr(),
         );
+        if return_code != 0 {
+            puts(*error_string.as_ptr());
+            exit(1);
+        }
     }
 }
 
