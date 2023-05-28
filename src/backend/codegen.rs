@@ -10,10 +10,14 @@ use libc::*;
 use llvm_sys::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
+use llvm_sys::analysis::*;
 use rpds::HashTrieMap;
 use slotmap::SlotMap;
 
+use std::mem::MaybeUninit;
+
 use super::runtime::RuntimeLibrary;
+use crate::utils::to_c_str;
 
 type SymTable<K, V> = HashTrieMap<K, V>;
 type BinOp = crate::ast::BinOp;
@@ -91,7 +95,7 @@ impl<'a> CodeGen<'a> {
                                     func, 
                                     args.as_mut_ptr(), 
                                     args.len() as u32, 
-                                    "call".as_ptr() as *const c_char)
+                                    to_c_str("call").as_ptr())
                 }
             }
             RvalueEnum::Operand(operand) => self.create_operand(operand),
@@ -155,7 +159,7 @@ impl<'a> CodeGen<'a> {
                         let ret_val = LLVMBuildLoad2(self.builder, 
                                         self.object_ptr_type(),
                                             ret_ptr,
-                                        "".as_ptr() as *const i8);
+                                        to_c_str("ret_val").as_ptr());
                         LLVMBuildRet(self.builder, ret_val);
                     }
                 }
@@ -181,17 +185,17 @@ impl<'a> CodeGen<'a> {
 
                 // start generate basicblocks
                 // create alloca basic block
-                let alloca_bb = LLVMAppendBasicBlock(func, "alloca".as_ptr() as *const c_char);
+                let alloca_bb = LLVMAppendBasicBlock(func, to_c_str("alloca").as_ptr());
                 // set insert point
                 self.set_insert_point_before_terminator(alloca_bb);
                 // create ret value basic block
-                let ret_ptr = LLVMBuildAlloca(self.builder, self.object_ptr_type(), "ret_val.ptr".as_ptr() as *const c_char);
+                let ret_ptr = LLVMBuildAlloca(self.builder, self.object_ptr_type(), to_c_str("ret_val.ptr").as_ptr());
 
                 // emit all BB
                 let mut block_map = HashMap::new();
                 for (blockref, block) in mfn.blocks.iter() {
                     let name = block.name.clone();
-                    let bb = LLVMAppendBasicBlock(func, name.as_ptr() as *const c_char);   
+                    let bb = LLVMAppendBasicBlock(func, to_c_str(&name).as_ptr() );   
                     block_map.insert(blockref, bb);
                 }
                 
@@ -217,7 +221,9 @@ impl<'a> CodeGen<'a> {
                 self.create_stmts(&mfn.blocks);
                 // generate teminators.
                 self.create_terminators(&mfn.blocks);
-                
+
+                // verify check
+                LLVMVerifyFunction(func, LLVMVerifierFailureAction::LLVMAbortProcessAction);
             }
         }
     }
@@ -227,6 +233,12 @@ impl<'a> CodeGen<'a> {
         for funcdef in mir.module.iter() {
             self.create_function(funcdef);
         }
+        // unsafe {
+        //     let mut err_string = MaybeUninit::uninit();
+        //     LLVMVerifyModule(self.module, 
+        //                     LLVMVerifierFailureAction::LLVMPrintMessageAction, 
+        //                     err_string.as_mut_ptr());
+        // }
     }
 
     // create object type LLVM Value
@@ -295,7 +307,7 @@ impl<'a> CodeGen<'a> {
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
-                            "call".as_ptr() as *const c_char)
+                            to_c_str("extract_i32").as_ptr())
                     }
                     if typ == self.ty_ctx.get_primitive("f64") {
                         let runtime_func = self.get_runtime_extract_f64();
@@ -304,7 +316,7 @@ impl<'a> CodeGen<'a> {
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
-                            "call".as_ptr() as *const c_char)
+                            to_c_str("extract_f64").as_ptr())
                     }
                     if typ == self.ty_ctx.get_primitive("bool") {
                         let runtime_func = self.get_runtime_extract_bool();
@@ -313,7 +325,7 @@ impl<'a> CodeGen<'a> {
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
-                            "call".as_ptr() as *const c_char)
+                            to_c_str("extract_bool").as_ptr())
                     }
                     panic!("can't get raw value!")
                 }
@@ -363,7 +375,7 @@ impl<'a> CodeGen<'a> {
                       runtime_func, 
                     [raw_value].as_mut_ptr(), 
                  1, 
-                    "box".as_ptr() as *const c_char)
+                    to_c_str("box_i32").as_ptr())
         }
     }
 
@@ -376,7 +388,7 @@ impl<'a> CodeGen<'a> {
                         runtime_func, 
                     [raw_value].as_mut_ptr(), 
                     1, 
-                    "box".as_ptr() as *const c_char)
+                    to_c_str("box_f64").as_ptr())
         }
     }
 
@@ -389,7 +401,7 @@ impl<'a> CodeGen<'a> {
                       runtime_func, 
                     [raw_value].as_mut_ptr(), 
                  1, 
-                    "box".as_ptr() as *const c_char)
+                    to_c_str("box_bool").as_ptr())
         }
     }
 
@@ -418,7 +430,7 @@ impl<'a> CodeGen<'a> {
             let top_level_var =  LLVMBuildLoad2(self.builder, 
                                     self.object_ptr_type(), 
                                 alloca, 
-                                "".as_ptr() as *const i8);
+                                to_c_str("").as_ptr());
             (is_object, top_level_var)
         }
     }
@@ -438,7 +450,7 @@ impl<'a> CodeGen<'a> {
             let var = slots.get(var_ref).unwrap();
             let object_ty = self.object_ptr_type();
             unsafe {
-                let stack_slot = LLVMBuildAlloca(self.builder, object_ty, var.name.as_ptr() as *const c_char);
+                let stack_slot = LLVMBuildAlloca(self.builder, object_ty, to_c_str(&var.name).as_ptr());
                 self.function
                     .as_mut()
                     .unwrap()
@@ -473,7 +485,7 @@ impl<'a> CodeGen<'a> {
                 }
             };
             unsafe {
-                let stack_slot = LLVMBuildAlloca(self.builder, llvm_type, var.name.as_ptr() as *const c_char);
+                let stack_slot = LLVMBuildAlloca(self.builder, llvm_type, to_c_str(&var.name).as_ptr());
                 self.function
                     .as_mut()
                     .unwrap()
@@ -490,11 +502,11 @@ impl<'a> CodeGen<'a> {
         if *typref == self.ty_ctx.get_i32() {
             unsafe {
                 return match op {
-                    BinOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, to_c_str("add").as_ptr()),
+                    BinOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, to_c_str("sub").as_ptr()),
+                    BinOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, to_c_str("mul").as_ptr()),
+                    BinOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, to_c_str("div").as_ptr()),
+                    BinOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, to_c_str("rem").as_ptr()),
                     _ => panic!("not implemented")
                 };
             }
@@ -502,11 +514,11 @@ impl<'a> CodeGen<'a> {
         if *typref == self.ty_ctx.get_f64() {
             unsafe {
                 return match op {
-                    BinOp::Add => LLVMBuildFAdd(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Sub => LLVMBuildFSub(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Mul => LLVMBuildFMul(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Div => LLVMBuildFDiv(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                    BinOp::Mod => LLVMBuildFRem(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Add => LLVMBuildFAdd(self.builder, lhs, rhs, to_c_str("add").as_ptr()),
+                    BinOp::Sub => LLVMBuildFSub(self.builder, lhs, rhs, to_c_str("sub").as_ptr()),
+                    BinOp::Mul => LLVMBuildFMul(self.builder, lhs, rhs, to_c_str("mul").as_ptr()),
+                    BinOp::Div => LLVMBuildFDiv(self.builder, lhs, rhs, to_c_str("div").as_ptr()),
+                    BinOp::Mod => LLVMBuildFRem(self.builder, lhs, rhs, to_c_str("rem").as_ptr()),
                     _ => panic!("not implemented")
                 };
             }
@@ -528,7 +540,7 @@ impl<'a> CodeGen<'a> {
                 _ => panic!("not implemented")
             };
             unsafe { 
-                return LLVMBuildICmp(self.builder, pred, lhs, rhs, "".as_ptr() as *const i8);
+                return LLVMBuildICmp(self.builder, pred, lhs, rhs, to_c_str("icmp").as_ptr());
             }
         }
         if *typref == self.ty_ctx.get_f64() {
@@ -542,7 +554,7 @@ impl<'a> CodeGen<'a> {
                 _ => panic!("not implemented")
             };
             unsafe { 
-                LLVMBuildFCmp(self.builder, pred, lhs, rhs, "".as_ptr() as *const i8);
+                LLVMBuildFCmp(self.builder, pred, lhs, rhs, to_c_str("fcmp").as_ptr());
             }
         }
         panic!("Unknown type in create_compare!");

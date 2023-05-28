@@ -11,6 +11,11 @@ mod utils;
 use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
+use llvm_sys::target::LLVM_InitializeAllAsmParsers;
+use llvm_sys::target::LLVM_InitializeAllAsmPrinters;
+use llvm_sys::target::LLVM_InitializeAllTargetInfos;
+use llvm_sys::target::LLVM_InitializeAllTargetMCs;
+use llvm_sys::target::LLVM_InitializeAllTargets;
 use midend::mir::MIR;
 use midend::typed_ast::TypedModule;
 use utils::error::Span;
@@ -23,6 +28,7 @@ use llvm_sys::transforms::pass_builder::*;
 use libc::*;
 
 use backend::codegen::CodeGen;
+use utils::to_c_str;
 
 use std::ffi::OsStr;
 use std::mem::MaybeUninit;
@@ -51,6 +57,13 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
 
 fn emit_object(module: LLVMModuleRef) {
     unsafe {
+        // initialization
+        LLVM_InitializeAllTargetInfos();
+        LLVM_InitializeAllTargets();
+        LLVM_InitializeAllTargetMCs();
+        LLVM_InitializeAllAsmParsers();
+        LLVM_InitializeAllAsmPrinters();
+
         let opt_level = LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault;
         let reloc_mode = LLVMRelocMode::LLVMRelocPIC;
         let code_model = LLVMCodeModel::LLVMCodeModelDefault;
@@ -60,16 +73,16 @@ fn emit_object(module: LLVMModuleRef) {
         let mut error_string = MaybeUninit::uninit();
         println!("set target machine");
         let return_code = LLVMGetTargetFromTriple(
-            triple.as_ptr() as *const i8,
+            to_c_str(triple).as_ptr(),
             target,
             error_string.as_mut_ptr(),
         );
         let cpu = "generic";
         let target_machine = LLVMCreateTargetMachine(
             *target,
-            triple.as_ptr() as *const i8,
-            cpu.as_ptr() as *const c_char,
-            "".as_ptr() as *const c_char,
+            to_c_str(triple).as_ptr(),
+            to_c_str(cpu).as_ptr(),
+            to_c_str("").as_ptr(),
             opt_level,
             reloc_mode,
             code_model,
@@ -82,7 +95,7 @@ fn emit_object(module: LLVMModuleRef) {
 
         LLVMRunPasses(
             module,
-            "default<O2>".as_ptr() as *const i8,
+            to_c_str("default<O2>").as_ptr() ,
             target_machine,
             pass_options,
         );
@@ -92,7 +105,7 @@ fn emit_object(module: LLVMModuleRef) {
         let return_code = LLVMTargetMachineEmitToFile(
             target_machine,
             module,
-            "output.o".as_ptr() as *mut i8,
+            to_c_str("output.o").as_ptr() as *mut _,
             file_type,
             err_message.as_mut_ptr(),
         );
@@ -133,7 +146,7 @@ fn main() {
                         let mut err_string = MaybeUninit::uninit();
                         LLVMPrintModuleToFile(
                             llvm_ir_codegen.module,
-                            "a.ll".as_ptr() as *const i8,
+                            to_c_str("a.ll").as_ptr(),
                             err_string.as_mut_ptr(),
                         );
                     }

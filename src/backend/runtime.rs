@@ -4,6 +4,7 @@ use llvm_sys::prelude::*;
 use libc::*;
 use std::ptr::null_mut;
 use crate::backend::codegen::CodeGen;
+use crate::utils::to_c_str;
 use paste::paste;
 
 
@@ -28,7 +29,7 @@ macro_rules! get_runtime_function {
         paste! {
             fn [<get_runtime_$fn_name>](&self) -> LLVMValueRef {
                 unsafe {
-                    LLVMGetNamedFunction(self.module, runtime_function_name!($fn_name).as_ptr() as *const i8)
+                    LLVMGetNamedFunction(self.module, to_c_str(runtime_function_name!($fn_name)).as_ptr())
                 }
             }
         }
@@ -116,7 +117,7 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
                                                 params.len() as u32, 
                                                 $va_arg as LLVMBool);
                 let func = LLVMAddFunction(self.module, 
-                                    runtime_function_name!($fn_name).as_ptr() as *const i8, 
+                                    to_c_str(runtime_function_name!($fn_name)).as_ptr(), 
                                     fn_type);
                 self.function_type_map.insert(func, fn_type);
             };
@@ -126,7 +127,7 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
                                                 0, 
                                                 $va_arg as LLVMBool);
                 let func = LLVMAddFunction(self.module, 
-                                    runtime_function_name!($fn_name).as_ptr() as *const i8, 
+                                    to_c_str(runtime_function_name!($fn_name)).as_ptr(), 
                                     fn_type);
                 self.function_type_map.insert(func, fn_type);
             };
