@@ -4,6 +4,7 @@ use inkwell::types::BasicMetadataTypeEnum;
 pub use crate::ast::*;
 pub use crate::utils::types::*;
 pub use inkwell::IntPredicate;
+pub use inkwell::FloatPredicate;
 use chumsky::container::Seq;
 use rpds::HashTrieMap;
 use std::{collections::{HashMap, HashSet}, any::Any, sync::mpsc::SyncSender, env::temp_dir};
@@ -556,446 +557,507 @@ impl<'ctx, 'a : 'ctx> CodeGen<'ctx, 'a> {
         }
     }
     
-    // pub fn codegen_binOP(&self, typedBinOp : &TypedBinOp, 
-    //     block_sym_table : &mut SymTable<String, Type>, 
-    //     block_sym_ptr_table : &mut SymTable<String, inkwell::values::PointerValue>) 
-    //     -> Option<TypedPointervalue> {
+    pub fn codegen_binOP<'c>(&'c self, typedBinOp : &'c TypedBinOp, 
+        mut block_sym_table : SymTable<String, Type>, 
+        mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'c>>,
+        func_name_table : SymTable<String, FunctionValue<'c>>) 
+        -> TypedPointervalue_table<'c>{
         
-    //         let _rhs_res = self.codegen_expr(&typedBinOp.rhs, &mut block_sym_table, &mut block_sym_ptr_table);
-    //         let _lhs_res = self.codegen_expr(&typedBinOp.lhs, &mut block_sym_table, &mut block_sym_ptr_table);
+            let mut tmp_func_table : SymTable<String, FunctionValue<'c>> = SymTable::new();
+            func_name_table.clone_into(&mut tmp_func_table);
+            let mut local_sym_table : SymTable<String, Type> = SymTable::new();
+            block_sym_table.clone_into(&mut local_sym_table);
+            let mut local_sym_ptr_table : SymTable<String, PointerValue<'c>> = SymTable::new();
+            block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
+
+            let mut tmp_func_table_2 : SymTable<String, FunctionValue<'c>> = SymTable::new();
+            func_name_table.clone_into(&mut tmp_func_table_2);
+            let mut local_sym_table_2 : SymTable<String, Type> = SymTable::new();
+            block_sym_table.clone_into(&mut local_sym_table_2);
+            let mut local_sym_ptr_table_2 : SymTable<String, PointerValue<'c>> = SymTable::new();
+            block_sym_ptr_table.clone_into(&mut local_sym_ptr_table_2);
+
+            let _rhs_res = self.codegen_expr(&typedBinOp.rhs, local_sym_table, local_sym_ptr_table, tmp_func_table);
+            let _lhs_res = self.codegen_expr(&typedBinOp.lhs, local_sym_table_2, local_sym_ptr_table_2, tmp_func_table_2);
             
-    //         if let (Some(lhs_res), Some(rhs_res)) = (_lhs_res, _rhs_res) {
-    //             let mut rhs_value = self.literal_unwrap(&typedBinOp.ty, &rhs_res.ptr);
-    //             let mut lhs_value = self.literal_unwrap(&typedBinOp.ty, &lhs_res.ptr);
+            if let (Some(lhs_res), Some(rhs_res)) = (_lhs_res.TypePointer, _rhs_res.TypePointer) {
+                // let mut rhs_value = self.literal_unwrap(&typedBinOp.ty, &rhs_res.ptr);
+                // let mut lhs_value = self.literal_unwrap(&typedBinOp.ty, &lhs_res.ptr);
 
-    //             let mut tmp_result : BasicValue;
+                // let mut tmp_result : BasicValue;
 
-    //             let bool_struct = self.context.struct_type(&[self.context.bool_type().into()], false);
-    //             let int_struct = self.context.struct_type(&[self.context.i32_type().into()], false);
-    //             let float_struct = self.context.struct_type(&[self.context.f64_type().into()], false);
-    //             let char_struct = self.context.struct_type(&[self.context.i8_type().into()], false);
-    //             match &typedBinOp.ty {
-    //                 PrimitiveType::Int => {
-    //                     match &typedBinOp.op {
-    //                         BinOp::Add => {
-    //                             let tmp_result = self.builder.build_int_add(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Sub => {
-    //                             let tmp_result = self.builder.build_int_sub(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mul => {
-    //                             let tmp_result = self.builder.build_int_mul(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Div => {
-    //                             let tmp_result = self.builder.build_int_signed_div(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mod => {
-    //                             let tmp_result = self.builder.build_int_signed_rem(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Eq => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::EQ, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Neq => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::NE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lt => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::SLT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gt => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::SGT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lte => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::SLE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gte => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::SGE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::And => {
-    //                             let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Or => {
-    //                             let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Int,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         _ => {return None;}
-    //                     }
-    //                 }
-    //                 PrimitiveType::Float => {
-    //                     rhs_value = self.builder.build_float_cast(&rhs_value, self.context.f64_type().into(), "");
-    //                     lhs_value = self.builder.build_float_cast(&lhs_value, self.context.f64_type().into(), "");
-    //                     match &typedBinOp.op {
-    //                         BinOp::Add => {
-    //                             let tmp_result = self.builder.build_float_add(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Float,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Sub => {
-    //                             let tmp_result = self.builder.build_float_sub(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Float,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mul => {
-    //                             let tmp_result = self.builder.build_float_mul(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Float,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Div => {
-    //                             let tmp_result = self.builder.build_float_div(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Float,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mod => {
-    //                             let tmp_result = self.builder.build_float_rem(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Float,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Eq => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::EQ, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Neq => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::NE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lt => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::SLT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gt => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::SGT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lte => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::SLE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gte => {
-    //                             let tmp_result = self.builder.build_float_compare(IntPredicate::SGE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         _ => {return None;}
-    //                     }
-    //                 }
-    //                 PrimitiveType::Char => {
-    //                     match &typedBinOp.op {
-    //                         BinOp::Add => {
-    //                             let tmp_result = self.builder.build_int_add(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Sub => {
-    //                             let tmp_result = self.builder.build_int_sub(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mul => {
-    //                             let tmp_result = self.builder.build_int_mul(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Div => {
-    //                             let tmp_result = self.builder.build_int_signed_div(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Mod => {
-    //                             let tmp_result = self.builder.build_int_signed_rem(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Eq => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::EQ, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Neq => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::NE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lt => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::ULT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gt => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::UGT, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Lte => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::ULE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Gte => {
-    //                             let tmp_result = self.builder.build_int_compare(IntPredicate::UGE, lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::And => {
-    //                             let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Or => {
-    //                             let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Char,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         _ => {return None;}
-    //                     }
-    //                 }
-    //                 PrimitiveType::Bool => {
-    //                     match &typedBinOp.op {
-    //                         BinOp::And => {
-    //                             let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         BinOp::Or => {
-    //                             let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
-    //                             let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
-    //                             self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                             return Some(TypedPointervalue::new(
-    //                                     &PrimitiveType::Bool,
-    //                                     &tmp_result_ptr,
-    //                                 )
-    //                             );
-    //                         }
-    //                         _ => {return None;}
-    //                     }
+                let bool_struct = self.context.bool_type();
+                let int_struct = self.context.i32_type();
+                let float_struct = self.context.f64_type();
+                let char_struct = self.context.i8_type();
+
+                match &typedBinOp.ty {
+                    Type::Primitive(PrimitiveType::Int) => {
+                        let rhs_value = self.literal_unwrap_int(&typedBinOp.ty, &rhs_res.ptr);
+                        let lhs_value = self.literal_unwrap_int(&typedBinOp.ty, &lhs_res.ptr);
+                        match &typedBinOp.op {
+                            BinOp::Add => {
+                                let tmp_result = self.builder.build_int_add(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Sub => {
+                                let tmp_result = self.builder.build_int_sub(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mul => {
+                                let tmp_result = self.builder.build_int_mul(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Div => {
+                                let tmp_result = self.builder.build_int_signed_div(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mod => {
+                                let tmp_result = self.builder.build_int_signed_rem(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Eq => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::EQ, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Neq => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::NE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lt => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::SLT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gt => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::SGT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lte => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::SLE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gte => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::SGE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::And => {
+                                let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Or => {
+                                let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(int_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Int), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                        }
+                    }
+                    Type::Primitive(PrimitiveType::Float) => {
+                        let rhs_value = self.literal_unwrap_float(&typedBinOp.ty, &rhs_res.ptr);
+                        let lhs_value = self.literal_unwrap_float(&typedBinOp.ty, &lhs_res.ptr);
+                        match &typedBinOp.op {
+                            BinOp::Add => {
+                                let tmp_result = self.builder.build_float_add(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Float), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Sub => {
+                                let tmp_result = self.builder.build_float_sub(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Float), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mul => {
+                                let tmp_result = self.builder.build_float_mul(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Float), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Div => {
+                                let tmp_result = self.builder.build_float_div(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Float), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mod => {
+                                let tmp_result = self.builder.build_float_rem(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(float_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Float), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Eq => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::OEQ, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Neq => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::ONE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lt => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::OLT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gt => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::OGT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lte => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::OLE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gte => {
+                                let tmp_result = self.builder.build_float_compare(FloatPredicate::OGE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                        }
+                    }
+                    Type::Primitive(PrimitiveType::Char) => {
+                        let rhs_value = self.literal_unwrap_char(&typedBinOp.ty, &rhs_res.ptr);
+                        let lhs_value = self.literal_unwrap_char(&typedBinOp.ty, &lhs_res.ptr);
+                        match &typedBinOp.op {
+                            BinOp::Add => {
+                                let tmp_result = self.builder.build_int_add(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Sub => {
+                                let tmp_result = self.builder.build_int_sub(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mul => {
+                                let tmp_result = self.builder.build_int_mul(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Div => {
+                                let tmp_result = self.builder.build_int_signed_div(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Mod => {
+                                let tmp_result = self.builder.build_int_signed_rem(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Eq => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::EQ, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Neq => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::NE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lt => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::ULT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gt => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::UGT, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Lte => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::ULE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Gte => {
+                                let tmp_result = self.builder.build_int_compare(IntPredicate::UGE, lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::And => {
+                                let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Or => {
+                                let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(char_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Char), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                        }
+                    }
+                    Type::Primitive(PrimitiveType::Bool) => {
+                        let rhs_value = self.literal_unwrap_bool(&typedBinOp.ty, &rhs_res.ptr);
+                        let lhs_value = self.literal_unwrap_bool(&typedBinOp.ty, &lhs_res.ptr);
+                        match &typedBinOp.op {
+                            BinOp::And => {
+                                let tmp_result = self.builder.build_and(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            BinOp::Or => {
+                                let tmp_result = self.builder.build_or(lhs_value, rhs_value, "");
+                                let tmp_result_ptr = self.builder.build_alloca(bool_struct, "");
+                                self.builder.build_store(tmp_result_ptr, tmp_result);
+                                return TypedPointervalue_table::new(
+                                    Type::Primitive(PrimitiveType::Bool), 
+                                    tmp_result_ptr, 
+                                    block_sym_table, 
+                                    block_sym_ptr_table
+                                );
+                            }
+                            _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                        }
                         
-    //                 }
-    //                 _ => {return None;}
-    //             }
-    //         }
-    //         else {
-    //             return None;
-    //         }
+                    }
+                    _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                }
+            }
+            else {
+                return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
+            }
 
-    // }
+    }
 
     pub fn codegen_unOp<'c>(&'c self, typedUnOp : &'c TypedUnOp, 
         mut block_sym_table : SymTable<String, Type>, 
@@ -1147,7 +1209,7 @@ impl<'ctx, 'a : 'ctx> CodeGen<'ctx, 'a> {
         }
         return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
     }
-    pub fn codegen_return<'c>(&self, typeReturn : &TypedReturn, 
+    pub fn codegen_return<'c>(&'c self, typeReturn : &'c TypedReturn, 
         mut block_sym_table : SymTable<String, Type>, 
         mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'c>>, 
         func_name_table : SymTable<String, FunctionValue<'c>>) 

@@ -12,7 +12,6 @@ use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
 use midend::type_check::module_type_check;
-use sergelang::backend::TypedModule;
 use utils::error::Span;
 
 use inkwell::{
@@ -150,7 +149,6 @@ fn main() {
     //     (1, 2) => { 123 }
     // };
     // println!("{}", a);
-    // let mut typedast : sergelang::midend::typed_ast::TypedModule;
 
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
@@ -172,7 +170,6 @@ fn main() {
             match module_type_check(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
-                    
                     // println!("{:#?}", typed_ast);
                 }
                 Err(err) => {
@@ -218,7 +215,6 @@ fn main() {
 
     let codegen = CodeGen::new(&context, &module, &builder);
     codegen.codegen();
-    // codegen.codegen_module(&typedast);
     codegen
         .module
         .print_to_file(output_file.with_extension("ll"))
