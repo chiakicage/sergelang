@@ -15,20 +15,11 @@ use midend::mir::MIR;
 use midend::typed_ast::TypedModule;
 use utils::error::Span;
 
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    targets::{
-        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
-    },
-    OptimizationLevel,
-};
 
-use llvm_sys::{*, transforms::pass_builder::{LLVMRunPasses, LLVMCreatePassBuilderOptions, LLVMPassBuilderOptionsSetDebugLogging}};
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::*;
+use llvm_sys::transforms::pass_builder::*;
 use libc::*;
 
 use backend::codegen::CodeGen;
