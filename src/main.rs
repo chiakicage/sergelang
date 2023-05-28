@@ -150,7 +150,7 @@ fn main() {
     //     (1, 2) => { 123 }
     // };
     // println!("{}", a);
-    let mut typedast : TypedModule;
+    // let mut typedast : sergelang::midend::typed_ast::TypedModule;
 
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
@@ -172,7 +172,7 @@ fn main() {
             match module_type_check(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
-                    typedast = typed_ast.clone();
+                    
                     // println!("{:#?}", typed_ast);
                 }
                 Err(err) => {
