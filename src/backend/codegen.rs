@@ -89,9 +89,8 @@ impl<'a> CodeGen<'a> {
                             .collect::<Vec<_>>();
                 unsafe {
                     let func = LLVMGetNamedFunction(self.module, name.as_ptr() as *const i8);
-                    let call_ty = self.get_llvm_type(*typ);
                     LLVMBuildCall2(self.builder, 
-                                    call_ty, 
+                                    self.function_type_map.get(&func).unwrap().clone(),
                                     func, 
                                     args.as_mut_ptr(), 
                                     args.len() as u32, 
@@ -223,7 +222,7 @@ impl<'a> CodeGen<'a> {
                 self.create_terminators(&mfn.blocks);
 
                 // verify check
-                LLVMVerifyFunction(func, LLVMVerifierFailureAction::LLVMAbortProcessAction);
+                LLVMVerifyFunction(func, LLVMVerifierFailureAction::LLVMPrintMessageAction);
             }
         }
     }
@@ -233,12 +232,12 @@ impl<'a> CodeGen<'a> {
         for funcdef in mir.module.iter() {
             self.create_function(funcdef);
         }
-        // unsafe {
-        //     let mut err_string = MaybeUninit::uninit();
-        //     LLVMVerifyModule(self.module, 
-        //                     LLVMVerifierFailureAction::LLVMPrintMessageAction, 
-        //                     err_string.as_mut_ptr());
-        // }
+        unsafe {
+            let mut err_string = MaybeUninit::uninit();
+            LLVMVerifyModule(self.module, 
+                            LLVMVerifierFailureAction::LLVMPrintMessageAction, 
+                            err_string.as_mut_ptr());
+        }
     }
 
     // create object type LLVM Value
