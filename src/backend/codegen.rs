@@ -78,13 +78,16 @@ impl<'a> CodeGen<'a> {
     }
 
     fn create_stmts(&self, blocks: &SlotMap<BlockRef, Block>) {
-        let block_map = self.function.as_ref().unwrap().block_map;
+        let block_map = &self.function
+                        .as_ref()
+                        .unwrap()
+                        .block_map;
         for (bb_ref, bb) in blocks {
             let current_bb = block_map.get(&bb_ref).unwrap().clone();
 
             // set insert point
             self.set_insert_point_before_terminator(current_bb);
-            for stmt in bb.stmts {
+            for stmt in bb.stmts.iter() {
                 let rhs = stmt.right.as_ref().unwrap();
                 let rvalue_need_raw = matches!(rhs.val.as_ref(), 
                         RvalueEnum::BinaryOperator(_, _, _) 
@@ -113,7 +116,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn create_function(&mut self, mfn: &Func) {
+    fn create_function(&mut self, mfn: &'a Func) {
         unsafe {
             let mfn_name = mfn.name.as_ptr() as *const i8;
             let mfn_type = self.ty_ctx.get_type_by_typeref(mfn.typ);
@@ -137,14 +140,14 @@ impl<'a> CodeGen<'a> {
 
                 // emit all BB
                 let mut block_map = HashMap::new();
-                for (blockref, block) in mfn.blocks {
+                for (blockref, block) in mfn.blocks.iter() {
                     let name = block.name.clone();
                     let bb = LLVMAppendBasicBlock(func, name.as_ptr() as *const c_char);   
                     block_map.insert(blockref, bb);
                 }
                 
                 self.function = Some(FunctionEmissionState { 
-                    var_map: &mfn.variables,
+                    var_map: & mfn.variables,
                     symbol_value_map: HashMap::new(), 
                     block_map: block_map,
                     alloca_block: alloca_bb, 
@@ -312,7 +315,10 @@ impl<'a> CodeGen<'a> {
 
     fn store_fn_variables(&mut self, slots: &SlotMap<VarRef, Var>, variables: &[VarRef]) {
         unsafe {
-            self.set_insert_point_before_terminator(self.function.unwrap().alloca_block);
+            self.set_insert_point_before_terminator(self.function
+                                                            .as_ref()
+                                                            .unwrap()
+                                                            .alloca_block);
             for var_ref in variables.iter().copied() {
                 let var = slots.get(var_ref).unwrap();
                 let object_ty = self.object_ptr_type();
