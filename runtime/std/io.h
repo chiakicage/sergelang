@@ -1,23 +1,19 @@
-#ifndef LIBSERGE_IO_H_
-#define LIBSERGE_IO_H_
+#pragma once
 
-// SysY runtime library.
-// Reference: https://bit.ly/3tzTFks
-// Modified by MaxXing.
+#include "GCObject.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+extern "C"
+void __serge_print(const GCObjectHandle Handle);
 
-// Input & output functions
-int getint(), getch(), getarray(int a[]);
-void putint(int num), putch(int ch), putarray(int n, int a[]);
+extern "C"
+void __serge_println(const GCObjectHandle Handle);
 
-// Timing functions
-void starttime();
-void stoptime();
+extern "C"
+SergeInt32 *__serge_read_i32();
 
-#ifdef __cplusplus
-}
-#endif
-#endif  // LIBSERGE_IO_H_
+extern "C"
+SergeFloat64 *__serge_read_f64();
+
+
+// Debug
+void serge_debug_dump_object(const GCObjectHandle);

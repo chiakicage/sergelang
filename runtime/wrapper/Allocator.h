@@ -14,3 +14,7 @@ void *RawMalloc(size_t size);
 
 /// \brief internal function, free raw memory.
 void RawFree(void *ptr);
+
+
+extern "C"
+void __serge_gc_collect(void);
