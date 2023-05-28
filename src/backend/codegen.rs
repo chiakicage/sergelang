@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::ptr::null_mut;
+use std::thread::current;
 
 use crate::midend::mir::*;
 use crate::midend::typed_ast::LiteralKind;
@@ -29,8 +31,12 @@ pub struct FunctionEmissionState<'a> {
     // represent a stack slot pointer of a local variables (ref),
     // or a intermediate result (raw value)
     symbol_value_map: HashMap<VarRef, (bool, LLVMValueRef)>,
+    deref_type_map: HashMap<VarRef, LLVMTypeRef>,
+
     block_map: HashMap<BlockRef, LLVMBasicBlockRef>,
     alloca_block: LLVMBasicBlockRef,
+    entry_block: LLVMBasicBlockRef,
+    exit_block: LLVMBasicBlockRef,
     ret_ptr: LLVMValueRef,
 }
 
@@ -130,6 +136,7 @@ impl<'a> CodeGen<'a> {
     fn create_terminators(&self, blocks: &SlotMap<BlockRef, Block>) {
         let function_state = self.function.as_ref().unwrap();
         let ret_ptr = function_state.ret_ptr;
+        let exit_bb = function_state.exit_block;
         let block_map = &function_state.block_map;
 
         for (block_ref, block) in blocks {
@@ -155,6 +162,11 @@ impl<'a> CodeGen<'a> {
                 }
                 Terminator::Return => {
                     unsafe {
+                        // jump to exit block, load ret val
+                        let current_bb = block_map.get(&block_ref).unwrap().clone();
+                        if current_bb != exit_bb {
+                            LLVMBuildBr(self.builder, exit_bb);
+                        }
                         let ret_val = LLVMBuildLoad2(self.builder, 
                                         self.object_ptr_type(),
                                             ret_ptr,
@@ -198,11 +210,20 @@ impl<'a> CodeGen<'a> {
                     block_map.insert(blockref, bb);
                 }
                 
+                // jump from alloca bb to the first code bb.
+                let entry_bb = block_map.get(&mfn.entry).unwrap().clone();
+                LLVMBuildBr(self.builder, entry_bb);
+
+                let exit_bb = block_map.get(&mfn.exit).unwrap().clone();
+
                 self.function = Some(FunctionEmissionState { 
                     var_map: & mfn.variables,
                     symbol_value_map: HashMap::new(), 
+                    deref_type_map: HashMap::new(),
                     block_map: block_map,
                     alloca_block: alloca_bb, 
+                    entry_block: entry_bb,
+                    exit_block: exit_bb,
                     ret_ptr: ret_ptr, 
                 });
 
@@ -211,10 +232,6 @@ impl<'a> CodeGen<'a> {
                 self.store_fn_variables(&mfn.variables, &mfn.params);
                 // alloca slots for temp variables
                 self.store_temp_variable(&mfn.variables, &mfn.temporaries);
-
-                // jump from alloca bb to the first code bb.
-                let entry_bb = LLVMGetNextBasicBlock(alloca_bb);
-                LLVMBuildBr(self.builder, entry_bb);
 
                 // generate instructions.
                 self.create_stmts(&mfn.blocks);
@@ -417,17 +434,16 @@ impl<'a> CodeGen<'a> {
 
     // Only used for load local variable, and return a LLVM top-level variable.
     fn load_stack_slot_variable(&self, var: VarRef) -> (bool, LLVMValueRef) {
-        let (is_object, alloca) = self
-            .function
-            .as_ref()
-            .unwrap()
+        let state = self.function.as_ref().unwrap();
+        let (is_object, alloca) = state
             .symbol_value_map
             .get(&var)
             .unwrap()
             .clone();
+        let llvm_type = state.deref_type_map.get(&var).unwrap().clone();
         unsafe {
             let top_level_var =  LLVMBuildLoad2(self.builder, 
-                                    self.object_ptr_type(), 
+                                    llvm_type, 
                                 alloca, 
                                 to_c_str("").as_ptr());
             (is_object, top_level_var)
@@ -449,12 +465,14 @@ impl<'a> CodeGen<'a> {
             let var = slots.get(var_ref).unwrap();
             let object_ty = self.object_ptr_type();
             unsafe {
+                let state = self.function.as_mut().unwrap();
                 let stack_slot = LLVMBuildAlloca(self.builder, object_ty, to_c_str(&var.name).as_ptr());
-                self.function
-                    .as_mut()
-                    .unwrap()
+                state
                     .symbol_value_map
                     .insert(var_ref, (true, stack_slot));
+                state
+                    .deref_type_map
+                    .insert(var_ref, object_ty);
             }
         }
     }   
@@ -484,12 +502,14 @@ impl<'a> CodeGen<'a> {
                 }
             };
             unsafe {
+                let state = self.function.as_mut().unwrap();
                 let stack_slot = LLVMBuildAlloca(self.builder, llvm_type, to_c_str(&var.name).as_ptr());
-                self.function
-                    .as_mut()
-                    .unwrap()
+                state
                     .symbol_value_map
                     .insert(var_ref, (is_object, stack_slot));
+                state
+                    .deref_type_map
+                    .insert(var_ref, llvm_type);
             }
         }
     }
