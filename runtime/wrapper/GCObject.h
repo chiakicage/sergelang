@@ -110,6 +110,16 @@ struct SergeTuple {
     getKind() { return GCMetaData::Tuple; }
 };
 
+// represent a constructor of 'enum' type
+struct SergeEnum {
+    GCMetaData  MetaData;
+    uint32_t    CtorTag;
+    void        *Data;
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Enum; }
+};
+
 typedef void *GCObjectHandle;
 
 #define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
