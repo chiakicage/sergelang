@@ -1786,7 +1786,7 @@ impl TypedModule {
                 BlockedExpr::WithSemicolon(expr) => expr,
                 BlockedExpr::WithoutSemicolon(expr) => expr,
             };
-            let ty_expr = self.expr_type_check(inner_expr, &sym_table, return_ty, in_loop)?;
+            let mut ty_expr = self.expr_type_check(inner_expr, &sym_table, return_ty, in_loop)?;
             match &ty_expr.kind {
                 ExprKind::Let(TypedLet { name, ty, .. }) => {
                     sym_table = sym_table.insert(name.clone(), *ty);
@@ -1801,6 +1801,12 @@ impl TypedModule {
                 }
                 ExprKind::Return(TypedReturn { expr: ty_expr }) => match ty_expr.as_ref() {
                     Some(ty_expr) => {
+                        if return_ty == self.ty_ctx.get_unit() {
+                            return Err(Error::custom(
+                                inner_expr.1,
+                                "invalid return, expected no return type".to_string(),
+                            ));
+                        }
                         if ty_expr.ty != return_ty {
                             return Err(Error::custom(
                                 inner_expr.1,
@@ -1813,11 +1819,11 @@ impl TypedModule {
                         }
                     }
                     None => {
-                        if return_ty != self.ty_ctx.get_primitive("unit") {
+                        if return_ty != self.ty_ctx.get_unit() {
                             return Err(Error::custom(
                                 inner_expr.1,
                                 format!(
-                                    "invalid return type, expected {}, got unit",
+                                    "invalid return type, expected {}, got no return type",
                                     self.ty_ctx.typeref_to_string(return_ty),
                                 ),
                             ));
@@ -1830,6 +1836,7 @@ impl TypedModule {
                 BlockedExpr::WithSemicolon(_) => self.ty_ctx.get_unit(),
                 BlockedExpr::WithoutSemicolon(_) => ty_expr.ty,
             };
+            ty_expr.ty = last_ty;
             exprs.push(ty_expr);
         }
         Ok(TypedBlock { exprs, ty: last_ty })
@@ -2014,7 +2021,7 @@ impl TypedModule {
     fn add_stdlib_functions(&mut self) {
         let getint = self.ty_ctx.func_type(vec![], self.ty_ctx.get_i32());
         let getch = self.ty_ctx.func_type(vec![], self.ty_ctx.get_char());
-        
+
         let putint = self
             .ty_ctx
             .func_type(vec![self.ty_ctx.get_i32()], self.ty_ctx.get_unit());
@@ -2031,7 +2038,5 @@ impl TypedModule {
         self.func_table = self.func_table.insert("putch".to_string(), putch);
         self.func_table = self.func_table.insert("starttime".to_string(), starttime);
         self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);
-
-
     }
 }
