@@ -1,4 +1,5 @@
 use crate::utils::error::Spanned;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct Module<'src> {
@@ -145,8 +146,16 @@ pub enum Literal<'src> {
     Bool(bool),
     Char(char),
 }
+
 #[derive(Debug)]
-pub struct Block<'src>(pub Vec<Spanned<Expr<'src>>>);
+pub enum BlockedExpr<'src> {
+    WithSemicolon(Spanned<Expr<'src>>),
+    WithoutSemicolon(Spanned<Expr<'src>>),
+}
+#[derive(Debug)]
+pub struct Block<'src> { 
+    pub stmts: Vec<BlockedExpr<'src>>,
+}
 
 #[derive(Debug, Clone)]
 pub enum BinOp {
@@ -164,11 +173,44 @@ pub enum BinOp {
     And,
     Or,
 }
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use BinOp::*;
+        match self {
+            Add => write!(f, "+"),
+            Sub => write!(f, "-"),
+            Mul => write!(f, "*"),
+            Div => write!(f, "/"),
+            Mod => write!(f, "%"),
+            Eq => write!(f, "=="),
+            Neq => write!(f, "!="),
+            Lt => write!(f, "<"),
+            Gt => write!(f, ">"),
+            Lte => write!(f, "<="),
+            Gte => write!(f, ">="),
+            And => write!(f, "&&"),
+            Or => write!(f, "||"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum UnOp {
     Neg,
     Not,
     BitNot,
+}
+
+impl fmt::Display for UnOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use UnOp::*;
+        match self {
+            Neg => write!(f, "-"),
+            Not => write!(f, "!"),
+            BitNot => write!(f, "~"),
+        }
+    }
 }
 
 #[derive(Debug)]

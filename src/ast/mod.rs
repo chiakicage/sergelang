@@ -262,8 +262,12 @@ fn traverse_block<'src>(block: &Spanned<Block<'src>>) {
     // 在这里执行遍历逻辑
     print!("( Expr::Block : ");
     let block = &block.0;
-    for sub_block in &block.0 {
-        traverse_expr(&sub_block);
+    for sub_block in &block.stmts {
+        let sub_block = match sub_block {
+            BlockedExpr::WithSemicolon(sub_block) => sub_block,
+            BlockedExpr::WithoutSemicolon(sub_block) => sub_block,
+        };
+        traverse_expr(sub_block);
     }
     print!(" )");
 }
