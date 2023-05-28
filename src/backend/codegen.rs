@@ -202,8 +202,8 @@ impl<'a> CodeGen<'a> {
                 });
 
                 // store arguments, local variables
-                self.store_fn_variables(&mfn.variables, &mfn.locals, true);
-                self.store_fn_variables(&mfn.variables, &mfn.params, true);
+                self.store_fn_variables(&mfn.variables, &mfn.locals);
+                self.store_fn_variables(&mfn.variables, &mfn.params);
 
                 // jump from alloca bb to the first code bb.
                 let entry_bb = LLVMGetNextBasicBlock(alloca_bb);
@@ -419,28 +419,65 @@ impl<'a> CodeGen<'a> {
     }
 
 
-    // Only used for save local variale and argument in `alloca_bb`
-    fn store_fn_variables(&mut self, slots: &SlotMap<VarRef, Var>, variables: &[VarRef], is_object: bool) {
-        unsafe {
-            self.set_insert_point_before_terminator(self.function
-                                                            .as_ref()
-                                                            .unwrap()
-                                                            .alloca_block);
-            for var_ref in variables.iter().copied() {
-                let var = slots.get(var_ref).unwrap();
-                let object_ty = self.object_ptr_type();
-
+    // Only used for save local variale and argument in `alloca_bb`.
+    // All the local variable (i.e. has a name in user code) is object type.
+    fn store_fn_variables(&mut self, 
+                          slots: &SlotMap<VarRef, Var>, 
+                          variables: &[VarRef]) 
+    {
+        self.set_insert_point_before_terminator(self.function
+                                                        .as_ref()
+                                                        .unwrap()
+                                                        .alloca_block);
+        for var_ref in variables.iter().copied() {
+            let var = slots.get(var_ref).unwrap();
+            let object_ty = self.object_ptr_type();
+            unsafe {
                 let stack_slot = LLVMBuildAlloca(self.builder, object_ty, var.name.as_ptr() as *const c_char);
                 self.function
-                        .as_mut()
-                        .unwrap()
-                        .symbol_value_map
-                        .insert(var_ref, (is_object, stack_slot));
-                    
+                    .as_mut()
+                    .unwrap()
+                    .symbol_value_map
+                    .insert(var_ref, (true, stack_slot));
             }
-
-        }   
+        }
+    }   
+    
+    // Only used for deciding intermediate temp variables type, and create store
+    fn store_temp_variable(&mut self, 
+                           slots: &SlotMap<VarRef, Var>,
+                           variables: &[VarRef])
+    {
+        self.set_insert_point_before_terminator(self.function
+                                                    .as_ref()
+                                                    .unwrap()
+                                                    .alloca_block);
+        for var_ref in variables.iter().copied() {
+            let var = slots.get(var_ref).unwrap();
+            let typ = self.ty_ctx.get_type_by_typeref(var.typ);
+            
+            // only use raw type for int, float and bool
+            let (is_object, llvm_type) = {
+                if let Type::Primitive(mptype) = typ {
+                    match mptype {
+                        PrimitiveType::Int | PrimitiveType::Float | PrimitiveType::Bool => (false, self.raw_primitive_type(mptype)),
+                        _ => (true, self.object_ptr_type()),
+                    }
+                } else {
+                    (true, self.object_ptr_type())
+                }
+            };
+            unsafe {
+                let stack_slot = LLVMBuildAlloca(self.builder, llvm_type, var.name.as_ptr() as *const c_char);
+                self.function
+                    .as_mut()
+                    .unwrap()
+                    .symbol_value_map
+                    .insert(var_ref, (is_object, stack_slot));
+            }
+        }
     }
+
 
     fn create_arithematic(&self, 
         op: &BinOp, typref: &TypeRef, lhs: LLVMValueRef, rhs: LLVMValueRef) -> LLVMValueRef
