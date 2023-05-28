@@ -95,6 +95,7 @@ pub struct Rvalue {
 pub enum RvalueEnum {
     BinaryOperator(BinOp, Operand, Operand),
     UnaryOperator(UnOp, Operand, Operand),
+    // user level call, return value and paraemters should be object type.
     Call(String, Vec<Operand>)
 }
 
