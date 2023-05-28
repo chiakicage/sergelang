@@ -39,7 +39,6 @@ pub struct Func {
 
     pub entry: BlockRef,
     pub exit: BlockRef,
-    pub panic: BlockRef,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -205,7 +204,6 @@ impl<'ctx> FuncBuilder<'ctx> {
             return_value,
             entry,
             exit,
-            panic,
         };
 
         let namer = BlockNamer::new(prefix);
