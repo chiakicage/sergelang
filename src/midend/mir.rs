@@ -8,7 +8,6 @@ use std::{panic, vec};
 
 use crate::midend::typed_ast::*;
 use crate::utils::type_context::*;
-use crate::ast::ast::{BinOp, UnOp};
 
 use rpds::HashTrieMap;
 
