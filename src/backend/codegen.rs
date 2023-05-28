@@ -91,7 +91,7 @@ impl<'a> CodeGen<'a> {
                 let rhs = stmt.right.as_ref().unwrap();
                 let rvalue_need_raw = matches!(rhs.val.as_ref(), 
                         RvalueEnum::BinaryOperator(_, _, _) 
-                        | RvalueEnum::UnaryOperator(_, _, _));
+                        | RvalueEnum::UnaryOperator(_, _));
             }
         }
     }

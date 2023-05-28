@@ -11,6 +11,7 @@ mod utils;
 use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
+use midend::mir::MIR;
 use midend::typed_ast::TypedModule;
 use utils::error::Span;
 
@@ -171,6 +172,8 @@ fn main() {
                 Ok(typed_ast) => {
                     println!("type check passed");
                     // println!("{:#?}", typed_ast);
+                    let mut mir = MIR::create_from_typed_ast(&typed_ast);
+                    println!("{:#?}", mir);
                 }
                 Err(err) => {
                     errs.push(err);

@@ -155,6 +155,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
+                .at_least(1)
                 .collect::<Vec<_>>();
 
             let tuple = items
@@ -171,6 +172,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
+                .at_least(1)
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map(|args| PatternFields::NamedFields(args));
@@ -202,6 +204,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
+            .at_least(1)
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .map_with_span(|args, span: Span| (TypeStr::Tuple(args), span));
@@ -382,6 +385,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LParen), just(Token::RParen))
                     .map_with_span(|args, span: Span| (Expr::Tuple(args), span));
@@ -390,6 +394,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBracket), just(Token::RBracket))
                     .map_with_span(|args, span: Span| (Expr::Array(args), span));
