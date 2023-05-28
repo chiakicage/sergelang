@@ -35,6 +35,7 @@ pub struct CodeGen<'a> {
     pub module: LLVMModuleRef,
     pub builder: LLVMBuilderRef,
     pub function: Option<FunctionEmissionState<'a>>,
+    pub function_type_map: HashMap<LLVMValueRef, LLVMTypeRef>,
 
     pub name_ctx: SymTable<String, TypeRef>,
     pub ty_ctx: TypeContext
@@ -55,6 +56,7 @@ impl<'a> CodeGen<'a> {
                 module,
                 builder,
                 function: None,
+                function_type_map: HashMap::new(),
                 name_ctx: name_ctx.clone(),
                 ty_ctx: ty_ctx.clone(),
             }
@@ -92,6 +94,7 @@ impl<'a> CodeGen<'a> {
                                     "call".as_ptr() as *const c_char)
                 }
             }
+            RvalueEnum::Operand(operand) => self.create_operand(operand),
             _ => { panic!("not implemented1") }
         }
     }
@@ -122,43 +125,41 @@ impl<'a> CodeGen<'a> {
     }
 
     fn create_terminators(&self, blocks: &SlotMap<BlockRef, Block>) {
-        unsafe {
-            let function_state = self.function.as_ref().unwrap();
-            let ret_ptr = function_state.ret_ptr;
-            let block_map = &function_state.block_map;
+        let function_state = self.function.as_ref().unwrap();
+        let ret_ptr = function_state.ret_ptr;
+        let block_map = &function_state.block_map;
 
-            for (block_ref, block) in blocks {
-                let current_bb = block_map.get(&block_ref).unwrap().clone();
-                // insert at the end of bb.
-                self.set_insert_point_before_terminator(current_bb);
-                match &block.terminator {
-                    Terminator::Branch(cond, then, or) => {
-                        // should be bool type
-                        let cond = self.create_raw_operand(cond);
-                        unsafe {
-                            LLVMBuildCondBr(self.builder, 
-                                            cond, 
-                                            block_map.get(then).unwrap().clone(), 
-                                            block_map.get(or).unwrap().clone());
-                        }
+        for (block_ref, block) in blocks {
+            let current_bb = block_map.get(&block_ref).unwrap().clone();
+            // insert at the end of bb.
+            self.set_insert_point_before_terminator(current_bb);
+            match &block.terminator {
+                Terminator::Branch(cond, then, or) => {
+                    // should be bool type
+                    let cond = self.create_raw_operand(cond);
+                    unsafe {
+                        LLVMBuildCondBr(self.builder, 
+                                        cond, 
+                                        block_map.get(then).unwrap().clone(), 
+                                        block_map.get(or).unwrap().clone());
                     }
-                    Terminator::Jump(blockref) => {
-                        let target_bb = block_map.get(blockref).unwrap().clone();
-                        unsafe {
-                            LLVMBuildBr(self.builder, target_bb);
-                        }
-                    }
-                    Terminator::Return => {
-                        unsafe {
-                            let ret_val = LLVMBuildLoad2(self.builder, 
-                                            self.object_ptr_type(),
-                                                ret_ptr,
-                                            "".as_ptr() as *const i8);
-                            LLVMBuildRet(self.builder, ret_val);
-                        }
-                    }
-                    _ => { panic!("not implemented"); }
                 }
+                Terminator::Jump(blockref) => {
+                    let target_bb = block_map.get(blockref).unwrap().clone();
+                    unsafe {
+                        LLVMBuildBr(self.builder, target_bb);
+                    }
+                }
+                Terminator::Return => {
+                    unsafe {
+                        let ret_val = LLVMBuildLoad2(self.builder, 
+                                        self.object_ptr_type(),
+                                            ret_ptr,
+                                        "".as_ptr() as *const i8);
+                        LLVMBuildRet(self.builder, ret_val);
+                    }
+                }
+                _ => { panic!("not implemented"); }
             }
         }
     }
@@ -176,6 +177,7 @@ impl<'a> CodeGen<'a> {
                                                                 false);
                 
                 let func = LLVMAddFunction(self.module, mfn_name, fn_type);
+                self.function_type_map.insert(func, fn_type);
 
                 // start generate basicblocks
                 // create alloca basic block
@@ -204,6 +206,8 @@ impl<'a> CodeGen<'a> {
                 // store arguments, local variables
                 self.store_fn_variables(&mfn.variables, &mfn.locals);
                 self.store_fn_variables(&mfn.variables, &mfn.params);
+                // alloca slots for temp variables
+                self.store_temp_variable(&mfn.variables, &mfn.temporaries);
 
                 // jump from alloca bb to the first code bb.
                 let entry_bb = LLVMGetNextBasicBlock(alloca_bb);
@@ -219,6 +223,7 @@ impl<'a> CodeGen<'a> {
     }
 
     pub fn create_module(&mut self, mir: &'a MIR) {
+        self.insert_runtime_function_declaration();
         for funcdef in mir.module.iter() {
             self.create_function(funcdef);
         }
@@ -286,7 +291,7 @@ impl<'a> CodeGen<'a> {
                     if typ == self.ty_ctx.get_primitive("i32") {
                         let runtime_func = self.get_runtime_extract_i32();
                         return LLVMBuildCall2(self.builder, 
-                            LLVMGetCalledFunctionType(runtime_func), 
+                            self.function_type_map.get(&runtime_func).unwrap().clone(),
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
@@ -295,7 +300,7 @@ impl<'a> CodeGen<'a> {
                     if typ == self.ty_ctx.get_primitive("f64") {
                         let runtime_func = self.get_runtime_extract_f64();
                         return LLVMBuildCall2(self.builder, 
-                            LLVMGetCalledFunctionType(runtime_func), 
+                            self.function_type_map.get(&runtime_func).unwrap().clone(),
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
@@ -304,7 +309,7 @@ impl<'a> CodeGen<'a> {
                     if typ == self.ty_ctx.get_primitive("bool") {
                         let runtime_func = self.get_runtime_extract_bool();
                         return LLVMBuildCall2(self.builder, 
-                            LLVMGetCalledFunctionType(runtime_func), 
+                            self.function_type_map.get(&runtime_func).unwrap().clone(),
                             runtime_func, 
                             [var_value].as_mut_ptr(), 
                             1, 
@@ -354,7 +359,7 @@ impl<'a> CodeGen<'a> {
         let runtime_func = self.get_runtime_alloc_i32_literal();
         unsafe {
             LLVMBuildCall2(self.builder, 
-                    LLVMGetCalledFunctionType(runtime_func), 
+                        self.function_type_map.get(&runtime_func).unwrap().clone(), 
                       runtime_func, 
                     [raw_value].as_mut_ptr(), 
                  1, 
@@ -367,7 +372,7 @@ impl<'a> CodeGen<'a> {
         let runtime_func = self.get_runtime_alloc_f64_literal();
         unsafe {
             LLVMBuildCall2(self.builder, 
-                    LLVMGetCalledFunctionType(runtime_func), 
+                        self.function_type_map.get(&runtime_func).unwrap().clone(), 
                         runtime_func, 
                     [raw_value].as_mut_ptr(), 
                     1, 
@@ -379,8 +384,8 @@ impl<'a> CodeGen<'a> {
     fn box_raw_value_bool(&self, raw_value: LLVMValueRef) -> LLVMValueRef {
         let runtime_func = self.get_runtime_alloc_bool_literal();
         unsafe {
-            LLVMBuildCall2(self.builder, 
-                    LLVMGetCalledFunctionType(runtime_func), 
+            LLVMBuildCall2(self.builder,    
+                        self.function_type_map.get(&runtime_func).unwrap().clone(), 
                       runtime_func, 
                     [raw_value].as_mut_ptr(), 
                  1, 

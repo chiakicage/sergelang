@@ -69,7 +69,7 @@ pub trait RuntimeLibrary<'a> {
     runtime_function!(tuple_length);
     runtime_function!(extract_tuple_field);   
 
-    fn insert_runtime_function_declaration(&self); 
+    fn insert_runtime_function_declaration(&mut self); 
 }
 
 
@@ -107,7 +107,7 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
     get_runtime_function!(tuple_length);
     get_runtime_function!(extract_tuple_field);
 
-    fn insert_runtime_function_declaration(&self) {
+    fn insert_runtime_function_declaration(&mut self) {
         macro_rules! insert_runtime_function {
             ($va_arg: literal; $fn_name: ident : | $($param_tys: ident),* | => $ret_ty: ident) => {
                 let mut params = [$($param_tys), *];
@@ -115,18 +115,20 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
                                                 params.as_mut_ptr(), 
                                                 params.len() as u32, 
                                                 $va_arg as LLVMBool);
-                LLVMAddFunction(self.module, 
-                                runtime_function_name!($fn_name).as_ptr() as *const i8, 
-                                fn_type);
+                let func = LLVMAddFunction(self.module, 
+                                    runtime_function_name!($fn_name).as_ptr() as *const i8, 
+                                    fn_type);
+                self.function_type_map.insert(func, fn_type);
             };
             ($va_arg: literal; $fn_name: ident : | | => $ret_ty: ident) => {
                 let fn_type = LLVMFunctionType($ret_ty, 
                                                 null_mut::<LLVMTypeRef>::(),
                                                 0, 
                                                 $va_arg as LLVMBool);
-                LLVMAddFunction(self.module, 
-                                runtime_function_name!($fn_name).as_ptr() as *const i8, 
-                                fn_type);
+                let func = LLVMAddFunction(self.module, 
+                                    runtime_function_name!($fn_name).as_ptr() as *const i8, 
+                                    fn_type);
+                self.function_type_map.insert(func, fn_type);
             };
         }
         unsafe {
@@ -149,7 +151,7 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
             // int32
             insert_runtime_function!(false; alloc_i32: | | => ptr_type);
             insert_runtime_function!(false; alloc_i32_literal: | int_type | => ptr_type);
-            insert_runtime_function!(false; extract_f64: | ptr_type | => float_type);
+            insert_runtime_function!(false; extract_i32: | ptr_type | => int_type);
             // float64
             insert_runtime_function!(false; alloc_f64: |  | => ptr_type);
             insert_runtime_function!(false; alloc_f64_literal: | float_type | => ptr_type);
