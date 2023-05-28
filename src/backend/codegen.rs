@@ -7,6 +7,7 @@ use crate::utils::type_context::*;
 
 use libc::*;
 
+use llvm_sys::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use rpds::HashTrieMap;
@@ -71,8 +72,8 @@ impl<'a> CodeGen<'a> {
                 let lhs_raw = self.create_raw_operand(lhs);
                 let rhs_raw = self.create_raw_operand(rhs);
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mod => self.create_arithematic(op, lhs_raw, rhs_raw),
-
+                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mod => self.create_arithematic(op, typ, lhs_raw, rhs_raw),
+                    BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => self.create_compare(op, typ, lhs_raw, rhs_raw),
                     _ => panic!("not implemented!"),
                 }
             }
@@ -131,8 +132,30 @@ impl<'a> CodeGen<'a> {
                 // insert at the end of bb.
                 self.set_insert_point_before_terminator(current_bb);
                 match &block.terminator {
-                    Terminator::Branch(cond, and, or) => {
-                        panic!("not");
+                    Terminator::Branch(cond, then, or) => {
+                        // should be bool type
+                        let cond = self.create_raw_operand(cond);
+                        unsafe {
+                            LLVMBuildCondBr(self.builder, 
+                                            cond, 
+                                            block_map.get(then).unwrap().clone(), 
+                                            block_map.get(or).unwrap().clone());
+                        }
+                    }
+                    Terminator::Jump(blockref) => {
+                        let target_bb = block_map.get(blockref).unwrap().clone();
+                        unsafe {
+                            LLVMBuildBr(self.builder, target_bb);
+                        }
+                    }
+                    Terminator::Return => {
+                        unsafe {
+                            let ret_val = LLVMBuildLoad2(self.builder, 
+                                            self.object_ptr_type(),
+                                                ret_ptr,
+                                            "".as_ptr() as *const i8);
+                            LLVMBuildRet(self.builder, ret_val);
+                        }
                     }
                     _ => { panic!("not implemented"); }
                 }
@@ -180,6 +203,7 @@ impl<'a> CodeGen<'a> {
 
                 // store arguments, local variables
                 self.store_fn_variables(&mfn.variables, &mfn.locals, true);
+                self.store_fn_variables(&mfn.variables, &mfn.params, true);
 
                 // jump from alloca bb to the first code bb.
                 let entry_bb = LLVMGetNextBasicBlock(alloca_bb);
@@ -419,19 +443,67 @@ impl<'a> CodeGen<'a> {
     }
 
     fn create_arithematic(&self, 
-        op: &BinOp, lhs: LLVMValueRef, rhs: LLVMValueRef) -> LLVMValueRef
+        op: &BinOp, typref: &TypeRef, lhs: LLVMValueRef, rhs: LLVMValueRef) -> LLVMValueRef
     {
-        unsafe {
-            let res = match op {
-                BinOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                BinOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                BinOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                BinOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, "".as_ptr() as *const i8),
-                BinOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+        if *typref == self.ty_ctx.get_i32() {
+            unsafe {
+                return match op {
+                    BinOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    _ => panic!("not implemented")
+                };
+            }
+        }
+        if *typref == self.ty_ctx.get_f64() {
+            unsafe {
+                return match op {
+                    BinOp::Add => LLVMBuildFAdd(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Sub => LLVMBuildFSub(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Mul => LLVMBuildFMul(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Div => LLVMBuildFDiv(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    BinOp::Mod => LLVMBuildFRem(self.builder, lhs, rhs, "".as_ptr() as *const i8),
+                    _ => panic!("not implemented")
+                };
+            }
+        }
+        panic!("Unknown type in create_arithematic!");
+    }
+
+    fn create_compare(&self, 
+        op: &BinOp, typref: &TypeRef, lhs: LLVMValueRef, rhs: LLVMValueRef) -> LLVMValueRef
+    {
+        if *typref == self.ty_ctx.get_i32() {
+            let pred = match op {
+                BinOp::Eq => LLVMIntPredicate::LLVMIntEQ,
+                BinOp::Neq => LLVMIntPredicate::LLVMIntNE,
+                BinOp::Lt => LLVMIntPredicate::LLVMIntSLT,
+                BinOp::Gt => LLVMIntPredicate::LLVMIntSGT,
+                BinOp::Lte => LLVMIntPredicate::LLVMIntSLE,
+                BinOp::Gte => LLVMIntPredicate::LLVMIntSGE,
                 _ => panic!("not implemented")
             };
-            res
+            unsafe { 
+                return LLVMBuildICmp(self.builder, pred, lhs, rhs, "".as_ptr() as *const i8);
+            }
         }
+        if *typref == self.ty_ctx.get_f64() {
+            let pred = match op {
+                BinOp::Eq => LLVMRealPredicate::LLVMRealUEQ,
+                BinOp::Neq => LLVMRealPredicate::LLVMRealUNE,
+                BinOp::Lt => LLVMRealPredicate::LLVMRealULT,
+                BinOp::Gt => LLVMRealPredicate::LLVMRealUGT,
+                BinOp::Lte => LLVMRealPredicate::LLVMRealULE,
+                BinOp::Gte => LLVMRealPredicate::LLVMRealUGE,
+                _ => panic!("not implemented")
+            };
+            unsafe { 
+                LLVMBuildFCmp(self.builder, pred, lhs, rhs, "".as_ptr() as *const i8);
+            }
+        }
+        panic!("Unknown type in create_compare!");
     }
 
     fn set_insert_point_before_terminator(&self, bb: LLVMBasicBlockRef) {

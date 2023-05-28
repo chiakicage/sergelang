@@ -65,11 +65,9 @@ pub struct Stmt {
 // MIR Terminator
 #[derive(Debug, Clone)]
 pub enum Terminator {
-    Select(VarRef, Vec<(usize, BlockRef)>, BlockRef),
     Branch(Operand, BlockRef, BlockRef),
     Jump(BlockRef),
     Return,
-    Panic,
 }
 
 #[derive(Debug, Clone)]
