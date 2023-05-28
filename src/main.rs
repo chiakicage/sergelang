@@ -120,7 +120,7 @@ fn main() {
                     println!("type check passed");
                     // println!("{:#?}", typed_ast);
                     let mut mir = MIR::create_from_typed_ast(&typed_ast);
-                    // println!("{:#?}", mir);
+                    println!("{:#?}", mir);
                     let mut llvm_ir_codegen = CodeGen::new(
                         &mir.name_ctx,
                         &mir.ty_ctx
