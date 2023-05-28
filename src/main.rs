@@ -120,12 +120,20 @@ fn main() {
                     println!("type check passed");
                     // println!("{:#?}", typed_ast);
                     let mut mir = MIR::create_from_typed_ast(&typed_ast);
+                    println!("generate middle IR");
                     // println!("{:#?}", mir);
                     let mut llvm_ir_codegen = CodeGen::new(
                         &mir.name_ctx,
                         &mir.ty_ctx
                     );
                     llvm_ir_codegen.create_module(&mir);
+                    // emit LLVM IR file
+                    unsafe {
+                        let mut err_string = MaybeUninit::uninit();
+                        LLVMPrintModuleToFile(llvm_ir_codegen.module, 
+                                                "a.ll".as_ptr() as *const i8,
+                                                 err_string.as_mut_ptr());
+                    }
                     // emit object
                     emit_object(llvm_ir_codegen.module);
                     // call linker here
