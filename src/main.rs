@@ -217,8 +217,8 @@ fn main() {
     let mut output_file = PathBuf::from("build/out.o");
 
     let codegen = CodeGen::new(&context, &module, &builder);
-    // codegen.codegen();
-    codegen.codegen_module(&typedast);
+    codegen.codegen();
+    // codegen.codegen_module(&typedast);
     codegen
         .module
         .print_to_file(output_file.with_extension("ll"))

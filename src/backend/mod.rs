@@ -347,44 +347,6 @@ impl<'ctx, 'a : 'ctx> CodeGen<'ctx, 'a> {
         }
     }
 
-    // pub fn literal_unwrap(&self, lit_type : &Type, lit_ptr : &PointerValue) -> BasicValue {
-    //     match lit_type {
-    //         Type::Primitive(primitive) => {
-                
-    //             match primitive {
-    //                 PrimitiveType::Bool => {
-    //                     let bool_ptr = &lit_ptr.const_cast(self.context.bool_type().into());
-    //                     let tmp_bool = self.builder.build_load(bool_ptr, "");
-    //                     return tmp_bool;
-    //                     // return tmp_bool.into_int_value();
-    //                 }
-    //                 PrimitiveType::Char => {
-    //                     let char_ptr = &lit_ptr.const_cast(self.context.i8_type().into());
-    //                     let tmp_char = self.builder.build_load(char_ptr, "");
-    //                     return tmp_char;
-    //                     // return tmp_char.into_int_value();
-    //                 }
-    //                 PrimitiveType::Float => {
-    //                     let float_ptr = &lit_ptr.const_cast(self.context.f64_type().into());
-    //                     let tmp_float = self.builder.build_load(float_ptr, "");
-    //                     return tmp_float;
-    //                     // return tmp_float.into_float_value();
-    //                 }
-    //                 PrimitiveType::Int => {
-    //                     let int_ptr = &lit_ptr.const_cast(self.context.i32_type().into());
-    //                     let tmp_int = self.builder.build_load(int_ptr, "");
-    //                     return tmp_int;
-    //                     // return tmp_int.into_int_value();
-    //                 }
-    //                 PrimitiveType::String => {
-    //                     return self.builder.build_load(lit_ptr, "").into_struct_value();
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         _ => {}
-    //     }
-    // }
 
     pub fn codegen_func<'c : 'ctx>(&'c self, typedFunc : &'c TypedFunc, mut func_name_table :  SymTable<String, FunctionValue<'c>>) 
     -> SymTable<String, FunctionValue<'c>>
@@ -1034,75 +996,94 @@ impl<'ctx, 'a : 'ctx> CodeGen<'ctx, 'a> {
     //         }
 
     // }
-    // pub fn codegen_unOp(&self, typedUnOp : &TypedUnOp, 
-    //     block_sym_table : &mut SymTable<String, Type>, 
-    //     block_sym_ptr_table : &mut SymTable<String, inkwell::values::PointerValue>) 
-    //     -> Option<TypedPointervalue> {
-    
-    //     let _rhs_res = self.codegen_expr(&typedUnOp.rhs, &mut block_sym_table, &mut block_sym_ptr_table);
+
+    pub fn codegen_unOp<'c>(&'c self, typedUnOp : &'c TypedUnOp, 
+        mut block_sym_table : SymTable<String, Type>, 
+        mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'c>>,
+        func_name_table : SymTable<String, FunctionValue<'c>>) 
+        -> TypedPointervalue_table<'c> {
         
-    //     if let Some(rhs_res) = _rhs_res {
-    //         match typedUnOp.op {
-    //             UnOp::Neg => {
-    //                 let tmp_value = self.literal_unwrap(&typedUnOp.ty, &rhs_res.ptr);
-    //                 match &typedUnOp.ty {
-    //                     PrimitiveType::Int => {
-    //                         let zero_value = self.context.i32_type().const_zero();
-    //                         let tmp_result = self.builder.build_int_sub(zero_value, tmp_value, "");
-    //                         let tmp_result_ptr = self.builder.build_alloca(
-    //                             self.context.struct_type(&[self.context.i32_type().into()], false), 
-    //                             "");
-    //                         self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                         return Some(TypedPointervalue::new(
-    //                                 &typedUnOp.ty,
-    //                                 &tmp_result_ptr,
-    //                             )
-    //                         );
-    //                     }
-    //                     PrimitiveType::Float => {
-    //                         let zero_value = self.context.f64_type().const_float(0);
-    //                         let tmp_result = self.builder.build_float_sub(zero_value, tmp_value, "");
-    //                         let tmp_result_ptr = self.builder.build_alloca(
-    //                             self.context.struct_type(&[self.context.f64_type().into()], false), 
-    //                             "");
-    //                         self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                         return Some(TypedPointervalue::new(
-    //                                 &typedUnOp.ty,
-    //                                 &tmp_result_ptr,
-    //                             )
-    //                         );
-    //                     }
-    //                     _ => {return None;}
-    //                 }
+        let mut tmp_func_table : SymTable<String, FunctionValue<'c>> = SymTable::new();
+        func_name_table.clone_into(&mut tmp_func_table);
+        let mut local_sym_table : SymTable<String, Type> = SymTable::new();
+        block_sym_table.clone_into(&mut local_sym_table);
+        let mut local_sym_ptr_table : SymTable<String, PointerValue<'c>> = SymTable::new();
+        block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
+
+        let _rhs_res = self.codegen_expr(
+            &typedUnOp.rhs, 
+            local_sym_table, 
+            local_sym_ptr_table,
+            tmp_func_table
+        );
+        
+        if let Some(rhs_res) = _rhs_res.TypePointer {
+            match typedUnOp.op {
+                UnOp::Neg => {
                     
-    //             }
-    //             UnOp::Not => {
-    //                 let tmp_value = self.literal_unwrap(&typedUnOp.ty, &rhs_res.ptr);
-    //                 match &typedUnOp.ty {
-    //                     PrimitiveType::Bool => {
-    //                         let tmp_result = self.builder.build_not(tmp_value, "");
-    //                         let tmp_result_ptr = self.builder.build_alloca(
-    //                             self.context.struct_type(&[self.context.bool_type().into()], false), 
-    //                             "",
-    //                         );
-    //                         self.builder.build_store(tmp_result_ptr, tmp_result);
-    //                         return Some(TypedPointervalue::new(
-    //                                 &typedUnOp.ty,
-    //                                 &tmp_result_ptr,
-    //                             )
-    //                         );
-    //                     }
-    //                     _ =>{return None;}
-    //                 }
-    //             }
-    //             _ => {return None;}
-    //         }
-    //     }
-    //     else {
-    //         return None;
-    //     }
+                    match &typedUnOp.ty {
+                        Type::Primitive(PrimitiveType::Int) => {
+                            let tmp_value = self.literal_unwrap_int(&typedUnOp.ty, &rhs_res.ptr);
+                            let zero_value = self.context.i32_type().const_zero();
+                            let tmp_result = self.builder.build_int_sub(zero_value, tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.i32_type(), 
+                                "");
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return TypedPointervalue_table::new(
+                                typedUnOp.ty.clone(), 
+                                tmp_result_ptr, 
+                                block_sym_table, 
+                                block_sym_ptr_table
+                            );
+                        }
+                        Type::Primitive(PrimitiveType::Float) => {
+                            let tmp_value = self.literal_unwrap_float(&typedUnOp.ty, &rhs_res.ptr);
+                            let zero_value = self.context.f64_type().const_float(0.0);
+                            let tmp_result = self.builder.build_float_sub(zero_value, tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.f64_type(), 
+                                "");
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return TypedPointervalue_table::new(
+                                typedUnOp.ty.clone(), 
+                                tmp_result_ptr, 
+                                block_sym_table, 
+                                block_sym_ptr_table
+                            );
+                        }
+                        _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                    }
+                    
+                }
+                UnOp::Not => {
+                    match &typedUnOp.ty {
+                        Type::Primitive(PrimitiveType::Bool) => {
+                            let tmp_value = self.literal_unwrap_bool(&typedUnOp.ty, &rhs_res.ptr);
+                            let tmp_result = self.builder.build_not(tmp_value, "");
+                            let tmp_result_ptr = self.builder.build_alloca(
+                                self.context.bool_type(), 
+                                "",
+                            );
+                            self.builder.build_store(tmp_result_ptr, tmp_result);
+                            return TypedPointervalue_table::new(
+                                typedUnOp.ty.clone(), 
+                                tmp_result_ptr, 
+                                block_sym_table, 
+                                block_sym_ptr_table
+                            );
+                        }
+                        _ =>{return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+                    }
+                }
+                _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+            }
+        }
+        else {
+            return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
+        }
         
-    // }
+    }
     pub fn codegen_call<'c>(&'c self, typedCall : &'c TypedCall, 
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'c>>,
