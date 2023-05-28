@@ -76,7 +76,7 @@ impl<'a> CodeGen<'a> {
 
 impl<'a> CodeGen<'a> {
 
-    // crate raw LLVM top-level variable, represent a expression.
+    // crate raw LLVM top-level variable, represent a expression, object type.
     fn create_rvalue(&self, value: &Rvalue) -> LLVMValueRef {
         let Rvalue {typ, val} = value;
         match val.as_ref() {
@@ -121,7 +121,7 @@ impl<'a> CodeGen<'a> {
             self.set_insert_point_before_terminator(current_bb);
             for stmt in bb.stmts.iter() {
                 let rhs = stmt.right.as_ref().unwrap();
-                let rhs = self.create_rvalue(rhs);
+                let rhs = self.create_rvalue(rhs); // may boxed value
                 // statement stored to left value (a local variable)
                 if let Some(lhs) = stmt.left {
                     let ptr = self.get_top_level_variable_addr(lhs);
@@ -265,27 +265,6 @@ impl<'a> CodeGen<'a> {
             OperandEnum::Literal(literal) => self.create_liteal(literal, true),
             OperandEnum::Var(var) => { 
                 let (is_object, llvm_var) = self.load_stack_slot_variable(*var);
-                if !is_object {
-                    let var_def = self.function
-                    .as_ref()
-                    .unwrap()
-                    .var_map
-                    .get(*var)
-                    .unwrap();
-
-                    let typ = var_def.typ;
-                    // box raw value
-                    if typ == self.ty_ctx.get_primitive("i32") {
-                        return self.box_raw_value_i32(llvm_var);
-                    }
-                    if typ == self.ty_ctx.get_primitive("f64") {
-                        return self.box_raw_value_f64(llvm_var);
-                    }
-                    if typ == self.ty_ctx.get_primitive("bool") {
-                        return self.box_raw_value_bool(llvm_var);
-                    }
-                    panic!("Unable to do box in create_operand!");
-                }
                 llvm_var
             }
         }
@@ -304,10 +283,6 @@ impl<'a> CodeGen<'a> {
                 OperandEnum::Var(var) => {
                     // load from stack slot => LLVM top level value
                     let (is_object, var_value) = self.load_stack_slot_variable(*var);
-                    // check if it is a raw value, if so return the raw value directly
-                    if !is_object {
-                        return var_value
-                    }
                     let var_def = self.function
                                         .as_ref()
                                         .unwrap()
@@ -356,26 +331,17 @@ impl<'a> CodeGen<'a> {
                LiteralKind::Int(i) => {
                     let int_type = LLVMInt32TypeInContext(self.context);
                     let raw_value = LLVMConstInt(int_type, *i as u64, 0);
-                    if is_object {
-                        return self.box_raw_value_i32(raw_value);
-                    }
-                    return raw_value;
+                    return self.box_raw_value_i32(raw_value);
                 }
                 LiteralKind::Float(f) => {
                     let double_type = LLVMDoubleTypeInContext(self.context);
                     let raw_value = LLVMConstReal(double_type, *f);
-                    if is_object {
-                        return self.box_raw_value_f64(raw_value);
-                    }
-                    return raw_value;
+                    return self.box_raw_value_f64(raw_value);
                 }
                 LiteralKind::Bool(b) => {
                     let bool_type = LLVMInt1TypeInContext(self.context);
                     let raw_value = LLVMConstInt(bool_type,*b as u64, 0);
-                    if is_object {
-                        return self.box_raw_value_bool(raw_value);
-                    }
-                    return raw_value;
+                    return self.box_raw_value_bool(raw_value);
                 }
                 _ => panic!("not implemented!")
             }
@@ -440,10 +406,9 @@ impl<'a> CodeGen<'a> {
             .get(&var)
             .unwrap()
             .clone();
-        let llvm_type = state.deref_type_map.get(&var).unwrap().clone();
         unsafe {
             let top_level_var =  LLVMBuildLoad2(self.builder, 
-                                    llvm_type, 
+                                            self.object_ptr_type(), 
                                 alloca, 
                                 to_c_str("").as_ptr());
             (is_object, top_level_var)
@@ -494,7 +459,7 @@ impl<'a> CodeGen<'a> {
             let (is_object, llvm_type) = {
                 if let Type::Primitive(mptype) = typ {
                     match mptype {
-                        PrimitiveType::Int | PrimitiveType::Float | PrimitiveType::Bool => (false, self.raw_primitive_type(mptype)),
+                        PrimitiveType::Int | PrimitiveType::Float | PrimitiveType::Bool => (false, self.object_ptr_type()),
                         _ => (true, self.object_ptr_type()),
                     }
                 } else {
@@ -503,7 +468,9 @@ impl<'a> CodeGen<'a> {
             };
             unsafe {
                 let state = self.function.as_mut().unwrap();
-                let stack_slot = LLVMBuildAlloca(self.builder, llvm_type, to_c_str(&var.name).as_ptr());
+                let stack_slot = LLVMBuildAlloca(self.builder, 
+                                                                llvm_type, 
+                                                                to_c_str(&var.name).as_ptr());
                 state
                     .symbol_value_map
                     .insert(var_ref, (is_object, stack_slot));
@@ -520,26 +487,26 @@ impl<'a> CodeGen<'a> {
     {
         if *typref == self.ty_ctx.get_i32() {
             unsafe {
-                return match op {
+                return self.box_raw_value_i32(match op {
                     BinOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, to_c_str("add").as_ptr()),
                     BinOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, to_c_str("sub").as_ptr()),
                     BinOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, to_c_str("mul").as_ptr()),
                     BinOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, to_c_str("div").as_ptr()),
                     BinOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, to_c_str("rem").as_ptr()),
                     _ => panic!("not implemented")
-                };
+                });
             }
         }
         if *typref == self.ty_ctx.get_f64() {
             unsafe {
-                return match op {
+                return self.box_raw_value_f64(match op {
                     BinOp::Add => LLVMBuildFAdd(self.builder, lhs, rhs, to_c_str("add").as_ptr()),
                     BinOp::Sub => LLVMBuildFSub(self.builder, lhs, rhs, to_c_str("sub").as_ptr()),
                     BinOp::Mul => LLVMBuildFMul(self.builder, lhs, rhs, to_c_str("mul").as_ptr()),
                     BinOp::Div => LLVMBuildFDiv(self.builder, lhs, rhs, to_c_str("div").as_ptr()),
                     BinOp::Mod => LLVMBuildFRem(self.builder, lhs, rhs, to_c_str("rem").as_ptr()),
                     _ => panic!("not implemented")
-                };
+                });
             }
         }
         panic!("Unknown type in create_arithematic!");
@@ -559,7 +526,8 @@ impl<'a> CodeGen<'a> {
                 _ => panic!("not implemented")
             };
             unsafe { 
-                return LLVMBuildICmp(self.builder, pred, lhs, rhs, to_c_str("icmp").as_ptr());
+                return self.box_raw_value_bool(
+                    LLVMBuildICmp(self.builder, pred, lhs, rhs, to_c_str("icmp").as_ptr()));
             }
         }
         if *typref == self.ty_ctx.get_f64() {
@@ -573,7 +541,8 @@ impl<'a> CodeGen<'a> {
                 _ => panic!("not implemented")
             };
             unsafe { 
-                LLVMBuildFCmp(self.builder, pred, lhs, rhs, to_c_str("fcmp").as_ptr());
+                return self.box_raw_value_bool(
+                    LLVMBuildFCmp(self.builder, pred, lhs, rhs, to_c_str("fcmp").as_ptr()));
             }
         }
         panic!("Unknown type in create_compare!");
