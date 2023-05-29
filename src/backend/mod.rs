@@ -660,10 +660,16 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 let float_struct = self.context.f64_type();
                 let char_struct = self.context.i8_type();
 
-                match &typedBinOp.ty {
+                let mut cal_type = lhs_res.pointer_type.clone();
+                if rhs_res.pointer_type == Type::Primitive(PrimitiveType::Float) {
+                    cal_type = Type::Primitive(PrimitiveType::Float);
+                }
+
+
+                match cal_type {
                     Type::Primitive(PrimitiveType::Int) => {
-                        let _rhs_value = self.literal_unwrap_int(&typedBinOp.ty, rhs_res.ptr);
-                        let _lhs_value = self.literal_unwrap_int(&typedBinOp.ty, lhs_res.ptr);
+                        let _rhs_value = self.literal_unwrap_int(&cal_type, rhs_res.ptr);
+                        let _lhs_value = self.literal_unwrap_int(&cal_type, lhs_res.ptr);
 
                         if let (Some(rhs_value), Some(lhs_value)) = (_rhs_value, _lhs_value) {
                             match &typedBinOp.op {
@@ -818,8 +824,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                         }
                     }
                     Type::Primitive(PrimitiveType::Float) => {
-                        let _rhs_value = self.literal_unwrap_float(&typedBinOp.ty, rhs_res.ptr);
-                        let _lhs_value = self.literal_unwrap_float(&typedBinOp.ty, lhs_res.ptr);
+                        let _rhs_value = self.literal_unwrap_float(&cal_type, rhs_res.ptr);
+                        let _lhs_value = self.literal_unwrap_float(&cal_type, lhs_res.ptr);
 
                         if let (Some(rhs_value), Some(lhs_value)) = (_rhs_value, _lhs_value){
                             match &typedBinOp.op {
@@ -954,8 +960,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                         
                     }
                     Type::Primitive(PrimitiveType::Char) => {
-                        let _rhs_value = self.literal_unwrap_char(&typedBinOp.ty, rhs_res.ptr);
-                        let _lhs_value = self.literal_unwrap_char(&typedBinOp.ty, lhs_res.ptr);
+                        let _rhs_value = self.literal_unwrap_char(&cal_type, rhs_res.ptr);
+                        let _lhs_value = self.literal_unwrap_char(&cal_type, lhs_res.ptr);
 
                         if let (Some(rhs_value), Some(lhs_value)) = (_rhs_value, _lhs_value){
                             match &typedBinOp.op {
