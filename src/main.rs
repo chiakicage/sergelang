@@ -15,13 +15,12 @@ use midend::mir::MIR;
 use midend::typed_ast::TypedModule;
 use utils::error::Span;
 
-
+use libc::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target::*;
 use llvm_sys::target_machine::*;
 use llvm_sys::transforms::pass_builder::*;
-use libc::*;
 
 use backend::codegen::CodeGen;
 use utils::to_c_str;
@@ -34,10 +33,10 @@ use std::ptr::null_mut;
 fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Output, String> {
     use std::process::Command;
 
-    Command::new("clang")
+    Command::new("clang++")
         .args([
-            "--target",
-            "riscv64-unknown-linux-elf",
+            "-target",
+            "riscv64-unknown-linux-gnu",
             "-march=rv64imfd",
             "-mabi=lp64d",
             "libsergeruntime_s.a",
@@ -70,11 +69,7 @@ fn emit_object(module: LLVMModuleRef) {
         // create target.
         let mut target = std::ptr::null_mut();
         let mut error_string = MaybeUninit::uninit();
-        let return_code = LLVMGetTargetFromTriple(
-            triple,
-            &mut target,
-            error_string.as_mut_ptr(),
-        );
+        let return_code = LLVMGetTargetFromTriple(triple, &mut target, error_string.as_mut_ptr());
         if return_code != 0 {
             puts(*error_string.as_ptr());
             exit(1);
@@ -92,14 +87,13 @@ fn emit_object(module: LLVMModuleRef) {
             code_model,
         );
 
-       
         // run passes
         let pass_options = LLVMCreatePassBuilderOptions();
         LLVMPassBuilderOptionsSetDebugLogging(pass_options, 1);
 
         LLVMRunPasses(
             module,
-            to_c_str("default<O2>").as_ptr() ,
+            to_c_str("default<O2>").as_ptr(),
             target_machine,
             pass_options,
         );
@@ -109,7 +103,7 @@ fn emit_object(module: LLVMModuleRef) {
         let return_code = LLVMTargetMachineEmitToFile(
             target_machine,
             module,
-            to_c_str("output.o").as_ptr() as *mut _,
+            to_c_str("build/output.o").as_ptr() as *mut _,
             file_type,
             err_message.as_mut_ptr(),
         );
@@ -139,6 +133,7 @@ fn main() {
         if let Some(ast) = ast {
             ast_walk(&ast);
             let mut errs = Vec::new();
+            let mut output_file = PathBuf::from("build/output.o");
             match TypedModule::create_from_ast(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
@@ -154,13 +149,45 @@ fn main() {
                         let mut err_string = MaybeUninit::uninit();
                         LLVMPrintModuleToFile(
                             llvm_ir_codegen.module,
-                            to_c_str("a.ll").as_ptr(),
+                            to_c_str("build/output.ll").as_ptr(),
                             err_string.as_mut_ptr(),
                         );
                     }
                     // emit object
                     emit_object(llvm_ir_codegen.module);
                     // call linker here
+                    let handle_err = |err: String| -> Result<(), ()> {
+                        println!("{} {:?}", "::", err.as_str());
+                        Err(())
+                    };
+                    let handle_output = |out: std::process::Output| -> Result<(), ()> {
+                        if out.status.success() {
+                            println!("{} Try to link the object file", "::");
+                        } else {
+                            println!("{} Try to link the object file", "::");
+                        }
+                        let stdout = std::str::from_utf8(out.stdout.as_slice()).unwrap_or_default();
+                        let stderr = std::str::from_utf8(out.stderr.as_slice()).unwrap_or_default();
+                        if !stderr.is_empty() || !stdout.is_empty() {
+                            println!("{} stderr: {} stdout: {}", "::", stderr, stdout);
+                            return Err(());
+                        }
+                        Ok(())
+                    };
+                    if call_system_linker(
+                        &output_file.with_extension("o"),
+                        &output_file.with_extension(""),
+                    )
+                    .map_or_else(handle_err, handle_output)
+                    .is_ok()
+                    {
+                        println!(
+                            "{} Write binary file into {:?}",
+                            "::",
+                            output_file.with_extension("").as_os_str()
+                        );
+                    }
+                    
                 }
                 Err(err) => {
                     errs.push(err);

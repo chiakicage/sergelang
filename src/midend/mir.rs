@@ -253,9 +253,11 @@ impl<'ctx> FuncBuilder<'ctx> {
     fn add_stmt_to_current_block(&mut self, stmt: Stmt) {
         self.current_block().stmts.push(stmt);
     }
-    fn terminate_current_block(&mut self, terminator: Terminator) {
+    fn terminate_current_block(&mut self, terminator: Terminator, last: bool) {
         self.current_block().terminator = terminator;
-        self.position = self.create_block(None);
+        if !last {
+            self.position = self.create_block(None);
+        }
     }
 
     fn get_var_by_name(&self, name: &str) -> VarRef {
@@ -382,17 +384,17 @@ impl<'ctx> FuncBuilder<'ctx> {
                     self.add_stmt_to_current_block(stmt);
                 }
                 let jmp = Terminator::Jump(self.func.exit);
-                self.terminate_current_block(jmp);
+                self.terminate_current_block(jmp, false);
                 None
             }
             ExprKind::Break => {
                 let jmp = Terminator::Jump(self.break_block.unwrap());
-                self.terminate_current_block(jmp);
+                self.terminate_current_block(jmp, false);
                 None
             }
             ExprKind::Continue => {
                 let jmp = Terminator::Jump(self.continue_block.unwrap());
-                self.terminate_current_block(jmp);
+                self.terminate_current_block(jmp, false);
                 None
             }
             ExprKind::Assign(TypedAssign { name, rhs }) => {
@@ -465,7 +467,7 @@ impl<'ctx> FuncBuilder<'ctx> {
         });
         if !self.current_block().stmts.is_empty() {
             let jmp = Terminator::Jump(self.func.exit);
-            self.terminate_current_block(jmp);
+            self.terminate_current_block(jmp, true);
         }
         self.func.clone()
     }

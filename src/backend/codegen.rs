@@ -59,7 +59,7 @@ impl<'a> CodeGen<'a> {
     {
         unsafe {
             let context = LLVMContextCreate();
-            let module = LLVMModuleCreateWithNameInContext("Serge".as_ptr() as *const i8, context);
+            let module = LLVMModuleCreateWithNameInContext(to_c_str("Serge").as_ptr() as *const i8, context);
             let builder = LLVMCreateBuilderInContext(context);
             CodeGen {
                 context,
