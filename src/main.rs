@@ -37,6 +37,7 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
         .args([
             "-target",
             "riscv64-unknown-linux-gnu",
+            "-nostdlib",
             "-march=rv64imfd",
             "-mabi=lp64d",
             "libsergeruntime_s.a",
