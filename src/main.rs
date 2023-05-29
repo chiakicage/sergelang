@@ -150,6 +150,13 @@ fn main() {
     // };
     // println!("{}", a);
 
+    let context = Context::create();
+    let module = context.create_module("main");
+    let builder = context.create_builder();
+    let mut output_file = PathBuf::from("build/out.o");
+
+    let codegen = CodeGen::new(&context, &module, &builder);
+
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
     println!("{:?}", tokens);
@@ -170,6 +177,7 @@ fn main() {
             match module_type_check(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
+                    codegen.codegen_module(&typed_ast);
                     // println!("{:#?}", typed_ast);
                 }
                 Err(err) => {
@@ -208,13 +216,8 @@ fn main() {
                 .unwrap()
         });
 
-    let context = Context::create();
-    let module = context.create_module("main");
-    let builder = context.create_builder();
-    let mut output_file = PathBuf::from("build/out.o");
-
-    let codegen = CodeGen::new(&context, &module, &builder);
-    codegen.codegen();
+    
+    // codegen.codegen();
     codegen
         .module
         .print_to_file(output_file.with_extension("ll"))

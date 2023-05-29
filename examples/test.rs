@@ -19,5 +19,5 @@ fn main() -> i32 {
     let g: bool = (a < b);
     let h: bool = (a >= b);
     let i: bool = (a <= b);
-    return (2 * (a + b) * (a - b) / 2);
+    (2 * (a + b) * (a - b) / 2)
 }
