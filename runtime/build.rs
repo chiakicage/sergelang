@@ -91,4 +91,15 @@ fn main() {
         .compile("libsergeruntime_s.a");
 
 
+    // Copy gernated static runtime library to runtime folder.
+    // cp ../target/.../deps/.../out/libsergeruntime_s.a ../libsergeruntime_s.a
+    let mut runtime_library_path = PathBuf::new();
+    runtime_library_path.push(out_dir);
+    runtime_library_path.push("libsergeruntime_s.a");
+    let mut output_path = PathBuf::new();
+    output_path.push(env::current_dir().unwrap().parent().unwrap());
+    output_path.push("libsergeruntime_s.a");
+
+    fs::copy(&runtime_library_path, output_path).unwrap();
+
 }
