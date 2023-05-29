@@ -328,20 +328,17 @@ impl<'ctx> FuncBuilder<'ctx> {
                                 typ: ret,
                                 val: Box::new(RvalueEnum::Call(name.clone(), args)),
                             };
-                            if ret != self.ty_ctx.get_unit() {
-                                let var = self.create_variable(None, ret);
-                                let stmt = Stmt {
-                                    left: Some(var),
-                                    right: Some(value),
-                                };
-                                self.add_stmt_to_current_block(stmt);
-                                Some(OperandEnum::Var(var))
+                            let var = if ret != self.ty_ctx.get_unit() {
+                                Some(self.create_variable(None, ret))
                             } else {
                                 None
-                            }
-                            
-                            
-                            
+                            };
+                            let stmt = Stmt {
+                                left: var,
+                                right: Some(value),
+                            };
+                            self.add_stmt_to_current_block(stmt);
+                            var.map(|var| OperandEnum::Var(var))
                         } else {
                             unreachable!()
                         }
