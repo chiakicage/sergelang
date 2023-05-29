@@ -82,6 +82,12 @@ pub enum OperandEnum {
     Var(VarRef),
 }
 
+impl From<VarRef> for OperandEnum {
+    fn from(var: VarRef) -> Self {
+        Self::Var(var)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Rvalue {
     pub typ: TypeRef,
@@ -94,6 +100,15 @@ pub enum RvalueEnum {
     UnaryOperator(UnOp, Operand),
     Call(String, Vec<Operand>),
     Operand(Operand),
+}
+
+impl From<Operand> for Rvalue {
+    fn from(op: Operand) -> Self {
+        Self {
+            typ: op.typ,
+            val: Box::new(RvalueEnum::Operand(op)),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -253,9 +268,9 @@ impl<'ctx> FuncBuilder<'ctx> {
     fn add_stmt_to_current_block(&mut self, stmt: Stmt) {
         self.current_block().stmts.push(stmt);
     }
-    fn terminate_current_block(&mut self, terminator: Terminator, last: bool) {
+    fn terminate_current_block(&mut self, terminator: Terminator, new_block: bool) {
         self.current_block().terminator = terminator;
-        if !last {
+        if new_block {
             self.position = self.create_block(None);
         }
     }
@@ -268,6 +283,55 @@ impl<'ctx> FuncBuilder<'ctx> {
             .get(name)
             .copied()
             .unwrap_or(self.ext_name_ctx.get(name).copied().unwrap())
+    }
+    pub fn build_else(&mut self, els: &TypedElse) -> Option<VarRef> {
+        match &els.kind {
+            ElseKind::ElseIf(if_) => self.build_if(if_),
+            ElseKind::Else(block) => self.build_block(block),
+            ElseKind::None => None,
+        }
+    }
+    pub fn build_if(&mut self, if_: &TypedIf) -> Option<VarRef> {
+        let cond = self.build_expr(&if_.cond).unwrap();
+        let if_value = if if_.ty == self.ty_ctx.get_unit() {
+            None
+        } else {
+            Some(self.create_variable(None, if_.ty))
+        };
+        let then_block = self.create_block(Some("then"));
+        let else_block = self.create_block(Some("else"));
+        let end_block = self.create_block(Some("end"));
+        self.terminate_current_block(Terminator::Branch(cond, then_block, else_block), false);
+        self.position = then_block;
+        let then = self.build_block(&if_.then);
+        if if_value.is_some() {
+            let stmt = Stmt {
+                left: if_value,
+                right: then.map(|v| Operand {
+                        typ: if_.ty,
+                        val: Box::new(v.into()),
+                    }.into()
+                ),
+            };
+            self.add_stmt_to_current_block(stmt);
+        }
+        self.terminate_current_block(Terminator::Jump(end_block), false);
+        self.position = else_block;
+        let else_ = self.build_else(&if_.els);
+        if if_value.is_some() {
+            let stmt = Stmt {
+                left: if_value,
+                right: else_.map(|v| Operand {
+                        typ: if_.ty,
+                        val: Box::new(v.into()),
+                    }.into()
+                ),
+            };
+            self.add_stmt_to_current_block(stmt);
+        }
+        self.terminate_current_block(Terminator::Jump(end_block), false);
+        self.position = end_block;
+        if_value
     }
 
     pub fn build_expr(&mut self, expr: &TypedExpr) -> Option<Operand> {
@@ -291,7 +355,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 };
                 let stmt = Stmt {
                     left: Some(var),
-                    right: Some(value)
+                    right: Some(value),
                 };
                 self.add_stmt_to_current_block(stmt);
                 Some(OperandEnum::Var(var))
@@ -305,15 +369,16 @@ impl<'ctx> FuncBuilder<'ctx> {
                 };
                 let stmt = Stmt {
                     left: Some(var),
-                    right: Some(value)
+                    right: Some(value),
                 };
                 self.add_stmt_to_current_block(stmt);
                 Some(OperandEnum::Var(var))
             }
 
-            ExprKind::If(TypedIf {
-                cond, then, els, ..
-            }) => todo!(),
+            ExprKind::If(if_) => {
+                let var = self.build_if(if_);
+                var.map(|var| OperandEnum::Var(var))
+            }
             ExprKind::Call(TypedCall { func, args, .. }) => {
                 let args = args
                     .iter()
@@ -323,7 +388,6 @@ impl<'ctx> FuncBuilder<'ctx> {
                     ExprKind::Variable(TypedVariable { name, ty }) => {
                         let func_ty = self.ty_ctx.get_type_by_typeref(*ty);
                         if let Type::Callable { ret, .. } = func_ty {
-                            
                             let value = Rvalue {
                                 typ: ret,
                                 val: Box::new(RvalueEnum::Call(name.clone(), args)),
@@ -371,7 +435,6 @@ impl<'ctx> FuncBuilder<'ctx> {
             ExprKind::Return(TypedReturn { expr, .. }) => {
                 let return_value = expr.as_ref().map(|e| self.build_expr(e).unwrap());
                 if let Some(return_value) = return_value {
-                    
                     let value = Rvalue {
                         typ: return_value.typ,
                         val: Box::new(RvalueEnum::Operand(return_value)),
@@ -383,17 +446,17 @@ impl<'ctx> FuncBuilder<'ctx> {
                     self.add_stmt_to_current_block(stmt);
                 }
                 let jmp = Terminator::Jump(self.func.exit);
-                self.terminate_current_block(jmp, false);
+                self.terminate_current_block(jmp, true);
                 None
             }
             ExprKind::Break => {
                 let jmp = Terminator::Jump(self.break_block.unwrap());
-                self.terminate_current_block(jmp, false);
+                self.terminate_current_block(jmp, true);
                 None
             }
             ExprKind::Continue => {
                 let jmp = Terminator::Jump(self.continue_block.unwrap());
-                self.terminate_current_block(jmp, false);
+                self.terminate_current_block(jmp, true);
                 None
             }
             ExprKind::Assign(TypedAssign { name, rhs }) => {
@@ -466,7 +529,7 @@ impl<'ctx> FuncBuilder<'ctx> {
         });
         if !self.current_block().stmts.is_empty() {
             let jmp = Terminator::Jump(self.func.exit);
-            self.terminate_current_block(jmp, true);
+            self.terminate_current_block(jmp, false);
         }
         self.func.clone()
     }
