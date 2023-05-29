@@ -100,7 +100,14 @@ pub enum RvalueEnum {
     UnaryOperator(UnOp, Operand),
     Call(String, Vec<Operand>),
     Operand(Operand),
+    UnboxedOperand(Operand),
+    Intrinsic(&'static str, Vec<Operand>),
     Index(Operand, Operand),
+    MakeTuple(Vec<Operand>),
+    Construct(usize, Vec<Operand>),
+    ExtractTupleField(Operand, usize), // get the i-th field of a tuple operand
+    ExtractEnumField(usize, Operand, usize), // get the i-th field of a enum operand 
+    ExtractEnumTag(Operand)
 }
 
 impl From<Operand> for Rvalue {
