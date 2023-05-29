@@ -279,10 +279,16 @@ impl<'ctx> FuncBuilder<'ctx> {
         self.name_var_map.get(name).copied().unwrap()
     }
     fn get_ty_by_name(&self, name: &str) -> TypeRef {
-        self.name_ctx
+        println!("get_ty_by_name: {}", name);
+        println!("name_ctx: {:?}", self.name_ctx.get(name));
+        let ty = self.name_ctx
             .get(name)
-            .copied()
-            .unwrap_or(self.ext_name_ctx.get(name).copied().unwrap())
+            .copied();
+        if ty.is_none() {
+            self.ext_name_ctx.get(name).copied().unwrap()
+        } else {
+            ty.unwrap()
+        }
     }
     pub fn build_else(&mut self, els: &TypedElse) -> Option<VarRef> {
         match &els.kind {
@@ -425,13 +431,114 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.add_stmt_to_current_block(stmt);
                 None
             }
-            ExprKind::While(TypedWhile { cond, body }) => todo!(),
+            ExprKind::While(TypedWhile { cond, body }) => {
+                let cond_block = self.create_block(Some("cond"));
+                let body_block = self.create_block(Some("body"));
+                let end_block = self.create_block(Some("end"));
+                self.terminate_current_block(Terminator::Jump(cond_block), false);
+                self.position = cond_block;
+                let cond = self.build_expr(cond).unwrap();
+                self.terminate_current_block(Terminator::Branch(cond, body_block, end_block), false);
+                let old_continue = self.continue_block;
+                let old_break = self.break_block;
+                self.continue_block = Some(cond_block);
+                self.break_block = Some(end_block);
+                self.position = body_block;
+                self.build_block(body);
+                self.continue_block = old_continue;
+                self.break_block = old_break;
+                self.terminate_current_block(Terminator::Jump(cond_block), false);
+                self.position = end_block;
+                None
+            },
             ExprKind::For(TypedFor {
                 var,
                 start,
                 end,
                 body,
-            }) => todo!(),
+            }) => {
+                let inc_block = self.create_block(Some("inc"));
+                let cond_block = self.create_block(Some("cond"));
+                let body_block = self.create_block(Some("body"));
+                let end_block = self.create_block(Some("end"));
+                // self.terminate_current_block(Terminator::Jump(start_block), false);
+                // self.position = start_block;
+                let iter_var = self.create_variable(Some(var), self.ty_ctx.get_i32());
+                let start = self.build_expr(start).unwrap();
+                let value = start.into();
+                let stmt = Stmt {
+                    left: Some(iter_var),
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                self.terminate_current_block(Terminator::Jump(cond_block), false);
+                self.position = cond_block;
+                
+                let end = self.build_expr(end).unwrap();
+                let cond_value = Rvalue {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(RvalueEnum::BinaryOperator(
+                        BinOp::Lt,
+                        Operand {
+                            typ: self.ty_ctx.get_i32(),
+                            val: Box::new(iter_var.into())
+                        },
+                        end,
+                    )),
+                };
+                let cond_var = self.create_variable(None, self.ty_ctx.get_bool());
+                let cond_stmt = Stmt {
+                    left: Some(cond_var),
+                    right: Some(cond_value),
+                };
+                self.add_stmt_to_current_block(cond_stmt);
+                let cond = Operand {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(cond_var.into())
+                };
+                self.terminate_current_block(
+                    Terminator::Branch(cond, body_block, end_block),
+                    false,
+                );
+                let old_continue = self.continue_block;
+                let old_break = self.break_block;
+                let old_name_ctx = self.name_ctx.clone();
+                let old_name_var_map = self.name_var_map.clone();
+                self.name_ctx = self.name_ctx.insert(var.clone(), self.ty_ctx.get_i32());
+                self.name_var_map = self.name_var_map.insert(var.clone(), iter_var);
+                self.continue_block = Some(inc_block);
+                self.break_block = Some(end_block);
+                self.position = body_block;
+                self.build_block(body);
+                self.continue_block = old_continue;
+                self.break_block = old_break;
+                self.name_ctx = old_name_ctx;
+                self.name_var_map = old_name_var_map;
+                self.terminate_current_block(Terminator::Jump(inc_block), false);
+                self.position = inc_block;
+                let inc_value = Rvalue {
+                    typ: self.ty_ctx.get_i32(),
+                    val: Box::new(RvalueEnum::BinaryOperator(
+                        BinOp::Add, 
+                        Operand {
+                            typ: self.ty_ctx.get_i32(),
+                            val: Box::new(iter_var.into())
+                        }, 
+                        Operand {
+                            typ: self.ty_ctx.get_i32(),
+                            val: Box::new(OperandEnum::Imm(1))
+                        }
+                    ))
+                };
+                let inc_stmt = Stmt {
+                    left: Some(iter_var),
+                    right: Some(inc_value),
+                };
+                self.add_stmt_to_current_block(inc_stmt);
+                self.terminate_current_block(Terminator::Jump(cond_block), false);
+                self.position = end_block;
+                None
+            },
             ExprKind::Return(TypedReturn { expr, .. }) => {
                 let return_value = expr.as_ref().map(|e| self.build_expr(e).unwrap());
                 if let Some(return_value) = return_value {
