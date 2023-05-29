@@ -25,11 +25,11 @@
 
 #ifdef __riscv
 // use s0 as frame pointer, in calling convention, s0 also serves as saved register
-#define read_frame_pointer(fp) __asm__ volatile("mv %0, x8", "=r"(fp))
+#define read_frame_pointer(fp) __asm__ volatile("mv %0, x8": "=r"(fp))
 #endif
 
 #ifdef __riscv
-#define read_stack_pointer(sp) __asm__ volatile("mv %0, x2", "=r"(sp))
+#define read_stack_pointer(sp) __asm__ volatile("mv %0, x2": "=r"(sp))
 #endif
 
 
