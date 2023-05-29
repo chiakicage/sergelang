@@ -272,13 +272,7 @@ impl<'ctx> FuncBuilder<'ctx> {
 
     pub fn build_expr(&mut self, expr: &TypedExpr) -> Option<Operand> {
         let expr_value = match &expr.kind {
-            ExprKind::Literal(lit) => Some(match &lit.kind {
-                LiteralKind::Int(i) => OperandEnum::Imm(*i),
-                LiteralKind::Bool(b) => OperandEnum::Imm(if *b { 1 } else { 0 }),
-                LiteralKind::Char(c) => OperandEnum::Imm(*c as i32),
-                LiteralKind::Str(s) => todo!(),
-                LiteralKind::Float(f) => todo!(),
-            }),
+            ExprKind::Literal(lit) => Some(OperandEnum::Literal(lit.kind.clone())),
             ExprKind::Variable(var) => {
                 let var = self.name_var_map.get(&var.name).copied().unwrap();
                 Some(OperandEnum::Var(var))
@@ -329,17 +323,25 @@ impl<'ctx> FuncBuilder<'ctx> {
                     ExprKind::Variable(TypedVariable { name, ty }) => {
                         let func_ty = self.ty_ctx.get_type_by_typeref(*ty);
                         if let Type::Callable { ret, .. } = func_ty {
-                            let var = self.create_variable(None, ret);
+                            
                             let value = Rvalue {
                                 typ: ret,
                                 val: Box::new(RvalueEnum::Call(name.clone(), args)),
                             };
-                            let stmt = Stmt {
-                                left: Some(var),
-                                right: Some(value),
-                            };
-                            self.add_stmt_to_current_block(stmt);
-                            Some(OperandEnum::Var(var))
+                            if ret != self.ty_ctx.get_unit() {
+                                let var = self.create_variable(None, ret);
+                                let stmt = Stmt {
+                                    left: Some(var),
+                                    right: Some(value),
+                                };
+                                self.add_stmt_to_current_block(stmt);
+                                Some(OperandEnum::Var(var))
+                            } else {
+                                None
+                            }
+                            
+                            
+                            
                         } else {
                             unreachable!()
                         }

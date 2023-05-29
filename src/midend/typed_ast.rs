@@ -2032,11 +2032,11 @@ impl TypedModule {
         let starttime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
         let stoptime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
 
-        self.func_table = self.func_table.insert("getint".to_string(), getint);
-        self.func_table = self.func_table.insert("getch".to_string(), getch);
-        self.func_table = self.func_table.insert("putint".to_string(), putint);
-        self.func_table = self.func_table.insert("putch".to_string(), putch);
-        self.func_table = self.func_table.insert("starttime".to_string(), starttime);
-        self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);
+        self.func_table = self.func_table.insert("__serge_read_i32".to_string(), getint);
+        // self.func_table = self.func_table.insert("getch".to_string(), getch);
+        self.func_table = self.func_table.insert("__serge_print".to_string(), putint);
+        // self.func_table = self.func_table.insert("putch".to_string(), putch);
+        // self.func_table = self.func_table.insert("starttime".to_string(), starttime);
+        // self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);
     }
 }
