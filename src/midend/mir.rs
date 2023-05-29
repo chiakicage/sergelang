@@ -281,9 +281,7 @@ impl<'ctx> FuncBuilder<'ctx> {
     fn get_ty_by_name(&self, name: &str) -> TypeRef {
         println!("get_ty_by_name: {}", name);
         println!("name_ctx: {:?}", self.name_ctx.get(name));
-        let ty = self.name_ctx
-            .get(name)
-            .copied();
+        let ty = self.name_ctx.get(name).copied();
         if ty.is_none() {
             self.ext_name_ctx.get(name).copied().unwrap()
         } else {
@@ -313,11 +311,13 @@ impl<'ctx> FuncBuilder<'ctx> {
         if if_value.is_some() {
             let stmt = Stmt {
                 left: if_value,
-                right: then.map(|v| Operand {
+                right: then.map(|v| {
+                    Operand {
                         typ: if_.ty,
                         val: Box::new(v.into()),
-                    }.into()
-                ),
+                    }
+                    .into()
+                }),
             };
             self.add_stmt_to_current_block(stmt);
         }
@@ -327,11 +327,13 @@ impl<'ctx> FuncBuilder<'ctx> {
         if if_value.is_some() {
             let stmt = Stmt {
                 left: if_value,
-                right: else_.map(|v| Operand {
+                right: else_.map(|v| {
+                    Operand {
                         typ: if_.ty,
                         val: Box::new(v.into()),
-                    }.into()
-                ),
+                    }
+                    .into()
+                }),
             };
             self.add_stmt_to_current_block(stmt);
         }
@@ -346,6 +348,46 @@ impl<'ctx> FuncBuilder<'ctx> {
             ExprKind::Variable(var) => {
                 let var = self.name_var_map.get(&var.name).copied().unwrap();
                 Some(OperandEnum::Var(var))
+            }
+            ExprKind::Array(TypedArray { elements, ty }) => {
+                let elements = elements
+                    .iter()
+                    .map(|e| self.build_expr(e).unwrap())
+                    .collect::<Vec<_>>();
+                let array = self.create_variable(None, *ty);
+                let value = Rvalue {
+                    typ: *ty,
+                    val: Box::new(RvalueEnum::Call(
+                        "__serge_alloc_array".to_string(),
+                        vec![]
+                    ))
+                };
+                let stmt = Stmt {
+                    left: Some(array),
+                    right: Some(value)
+                };
+                self.add_stmt_to_current_block(stmt);
+                elements.iter().for_each(|e| {
+                    let call = Rvalue {
+                        typ: self.ty_ctx.get_unit(),
+                        val: Box::new(RvalueEnum::Call(
+                            "__serge_array_push_back".to_string(),
+                            vec![
+                                Operand {
+                                    typ: self.ty_ctx.get_i32(),
+                                    val: Box::new(OperandEnum::Var(array))
+                                },
+                                e.clone()
+                            ]
+                        ))
+                    };
+                    let stmt = Stmt {
+                        left: None,
+                        right: Some(call)
+                    };
+                    self.add_stmt_to_current_block(stmt);
+                });
+                Some(OperandEnum::Var(array))
             }
             ExprKind::Block(block) => {
                 let var = self.build_block(block);
@@ -367,11 +409,11 @@ impl<'ctx> FuncBuilder<'ctx> {
                 Some(OperandEnum::Var(var))
             }
             ExprKind::UnOp(TypedUnOp { op, rhs, ty }) => {
-                let expr = self.build_expr(expr).unwrap();
+                let rhs = self.build_expr(rhs).unwrap();
                 let var = self.create_variable(None, *ty);
                 let value = Rvalue {
                     typ: *ty,
-                    val: Box::new(RvalueEnum::UnaryOperator(op.clone(), expr)),
+                    val: Box::new(RvalueEnum::UnaryOperator(op.clone(), rhs)),
                 };
                 let stmt = Stmt {
                     left: Some(var),
@@ -416,7 +458,24 @@ impl<'ctx> FuncBuilder<'ctx> {
                     _ => todo!(),
                 }
             }
-            ExprKind::Index(_) => todo!(),
+            ExprKind::Index(TypedIndex { array, index, ty }) => {
+                let array = self.build_expr(array).unwrap();
+                let index = self.build_expr(index).unwrap();
+                let var = self.create_variable(None, *ty);
+                let value = Rvalue {
+                    typ: *ty,
+                    val: Box::new(RvalueEnum::Call(
+                        "__serge_array_index".to_string(),
+                        vec![array, index],
+                    )),
+                };
+                let stmt = Stmt {
+                    left: Some(var),
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                Some(OperandEnum::Var(var))
+            },
             ExprKind::Let(TypedLet { name, rhs, ty }) => {
                 let var = self.create_variable(Some(name), *ty);
                 let rhs = self.build_expr(rhs).unwrap();
@@ -438,7 +497,10 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.terminate_current_block(Terminator::Jump(cond_block), false);
                 self.position = cond_block;
                 let cond = self.build_expr(cond).unwrap();
-                self.terminate_current_block(Terminator::Branch(cond, body_block, end_block), false);
+                self.terminate_current_block(
+                    Terminator::Branch(cond, body_block, end_block),
+                    false,
+                );
                 let old_continue = self.continue_block;
                 let old_break = self.break_block;
                 self.continue_block = Some(cond_block);
@@ -450,7 +512,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.terminate_current_block(Terminator::Jump(cond_block), false);
                 self.position = end_block;
                 None
-            },
+            }
             ExprKind::For(TypedFor {
                 var,
                 start,
@@ -473,7 +535,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.add_stmt_to_current_block(stmt);
                 self.terminate_current_block(Terminator::Jump(cond_block), false);
                 self.position = cond_block;
-                
+
                 let end = self.build_expr(end).unwrap();
                 let cond_value = Rvalue {
                     typ: self.ty_ctx.get_bool(),
@@ -481,7 +543,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                         BinOp::Lt,
                         Operand {
                             typ: self.ty_ctx.get_i32(),
-                            val: Box::new(iter_var.into())
+                            val: Box::new(iter_var.into()),
                         },
                         end,
                     )),
@@ -494,7 +556,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.add_stmt_to_current_block(cond_stmt);
                 let cond = Operand {
                     typ: self.ty_ctx.get_bool(),
-                    val: Box::new(cond_var.into())
+                    val: Box::new(cond_var.into()),
                 };
                 self.terminate_current_block(
                     Terminator::Branch(cond, body_block, end_block),
@@ -519,16 +581,16 @@ impl<'ctx> FuncBuilder<'ctx> {
                 let inc_value = Rvalue {
                     typ: self.ty_ctx.get_i32(),
                     val: Box::new(RvalueEnum::BinaryOperator(
-                        BinOp::Add, 
+                        BinOp::Add,
                         Operand {
                             typ: self.ty_ctx.get_i32(),
-                            val: Box::new(iter_var.into())
-                        }, 
+                            val: Box::new(iter_var.into()),
+                        },
                         Operand {
                             typ: self.ty_ctx.get_i32(),
-                            val: Box::new(OperandEnum::Imm(1))
-                        }
-                    ))
+                            val: Box::new(OperandEnum::Imm(1)),
+                        },
+                    )),
                 };
                 let inc_stmt = Stmt {
                     left: Some(iter_var),
@@ -538,7 +600,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 self.terminate_current_block(Terminator::Jump(cond_block), false);
                 self.position = end_block;
                 None
-            },
+            }
             ExprKind::Return(TypedReturn { expr, .. }) => {
                 let return_value = expr.as_ref().map(|e| self.build_expr(e).unwrap());
                 if let Some(return_value) = return_value {
@@ -564,24 +626,49 @@ impl<'ctx> FuncBuilder<'ctx> {
             ExprKind::Continue => {
                 let jmp = Terminator::Jump(self.continue_block.unwrap());
                 self.terminate_current_block(jmp, true);
+                // self.position = self.create_block(Some("continue"));
+                
                 None
             }
             ExprKind::Assign(TypedAssign { name, rhs }) => {
                 let value = self.build_expr(rhs).unwrap();
-                let var = self.get_var_by_name(name);
-                let ty = self.get_ty_by_name(name);
-                let value = Rvalue {
-                    typ: ty,
-                    val: Box::new(RvalueEnum::Operand(value)),
-                };
-                let stmt = Stmt {
-                    left: Some(var),
-                    right: Some(value),
-                };
-                self.add_stmt_to_current_block(stmt);
-                None
+                match &name.kind {
+                    ExprKind::Index(TypedIndex { array, index, ty }) => {
+                        let array = self.build_expr(array).unwrap();
+                        let index = self.build_expr(index).unwrap();
+                        let write_array = Rvalue {
+                            typ: self.ty_ctx.get_unit(),
+                            val: Box::new(RvalueEnum::Call(
+                                "__serge_array_write_index".to_string(),
+                                vec![array, index, value],
+                            ))
+                        };
+                        let stmt = Stmt {
+                            left: None,
+                            right: Some(write_array),
+                        };
+                        self.add_stmt_to_current_block(stmt);
+                        None
+                    }
+                    ExprKind::Variable(TypedVariable { name, ty }) => {
+                        let var = self.get_var_by_name(name);
+                        let ty = self.get_ty_by_name(name);
+                        let value = Rvalue {
+                            typ: ty,
+                            val: Box::new(RvalueEnum::Operand(value)),
+                        };
+                        let stmt = Stmt {
+                            left: Some(var),
+                            right: Some(value),
+                        };
+                        self.add_stmt_to_current_block(stmt);
+                        None
+                    }
+                    _ => unreachable!()
+                }
+                
+                
             }
-
             _ => todo!(),
         };
         expr_value.map(|val| Operand {

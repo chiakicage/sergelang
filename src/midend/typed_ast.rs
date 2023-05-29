@@ -201,7 +201,7 @@ pub struct TypedReturn {
 
 #[derive(Debug)]
 pub struct TypedAssign {
-    pub name: String,
+    pub name: Box<TypedExpr>,
     pub rhs: Box<TypedExpr>,
 }
 
@@ -1724,23 +1724,33 @@ impl TypedModule {
             Expr::Break => Ok(ExprKind::Break),
             Expr::Continue => Ok(ExprKind::Continue),
             Expr::Assign { name, rhs } => {
-                let ty_var = sym_table.get(name.0).copied().ok_or(Error::custom(
-                    span,
-                    format!("undefined variable {}", name.0),
-                ))?;
+                let ty_name = self.expr_type_check(name, sym_table, return_ty, in_loop)?;
                 let ty_rhs = self.expr_type_check(rhs, sym_table, return_ty, in_loop)?;
-                if ty_var != ty_rhs.ty {
+                if ty_name.ty != ty_rhs.ty {
                     return Err(Error::custom(
                         rhs.1,
                         format!(
                             "invalid rhs type, expected {}, got {}",
-                            self.ty_ctx.typeref_to_string(ty_var),
+                            self.ty_ctx.typeref_to_string(ty_name.ty),
                             self.ty_ctx.typeref_to_string(ty_rhs.ty)
                         ),
                     ));
                 }
+                match &ty_name.kind {
+                    ExprKind::Index(_) => {},
+                    ExprKind::Variable(_) => {},
+                    _ => {
+                        return Err(Error::custom(
+                            name.1,
+                            format!(
+                                "invalid lhs type, expected variable or index, got {}",
+                                self.ty_ctx.typeref_to_string(ty_name.ty)
+                            ),
+                        ));
+                    }
+                }
                 Ok(ExprKind::Assign(TypedAssign {
-                    name: name.0.to_string(),
+                    name: Box::new(ty_name),
                     rhs: Box::new(ty_rhs),
                 }))
             }

@@ -133,7 +133,7 @@ pub enum Expr<'src> {
     Break,
     Continue,
     Assign {
-        name: Spanned<&'src str>,
+        name: Box<Spanned<Expr<'src>>>,
         rhs: Box<Spanned<Expr<'src>>>,
     },
 }
