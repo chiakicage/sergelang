@@ -360,19 +360,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 let r#break =
                     just(Token::Break).map_with_span(|_tok, span: Span| (Expr::Break, span));
 
-                let assign = ident
-                    .clone()
-                    .then_ignore(just(Token::Assign))
-                    .then(expr.clone())
-                    .map_with_span(|(name, rhs), span| {
-                        (
-                            Expr::Assign {
-                                name,
-                                rhs: Box::new(rhs),
-                            },
-                            span,
-                        )
-                    });
+                
 
                 let r#continue =
                     just(Token::Continue).map_with_span(|_tok, span: Span| (Expr::Continue, span));
@@ -468,6 +456,19 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                         )
                     },
                 );
+
+                let assign = call.clone().or(var.clone())
+                    .then_ignore(just(Token::Assign))
+                    .then(expr.clone())
+                    .map_with_span(|(name, rhs), span| {
+                        (
+                            Expr::Assign {
+                                name: Box::new(name),
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    });
 
                 let named_fields = ident
                     .then(just(Token::Colon).ignore_then(expr.clone()).or_not())
