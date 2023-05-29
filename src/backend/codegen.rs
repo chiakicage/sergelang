@@ -100,7 +100,7 @@ impl<'a> CodeGen<'a> {
                                     func, 
                                     args.as_mut_ptr(), 
                                     args.len() as u32, 
-                                    to_c_str("call").as_ptr())
+                                    to_c_str("").as_ptr())
                 }
             }
             RvalueEnum::Operand(operand) => self.create_operand(operand),
@@ -331,16 +331,25 @@ impl<'a> CodeGen<'a> {
                LiteralKind::Int(i) => {
                     let int_type = LLVMInt32TypeInContext(self.context);
                     let raw_value = LLVMConstInt(int_type, *i as u64, 0);
+                    if !is_object {
+                        return raw_value;
+                    }
                     return self.box_raw_value_i32(raw_value);
                 }
                 LiteralKind::Float(f) => {
                     let double_type = LLVMDoubleTypeInContext(self.context);
                     let raw_value = LLVMConstReal(double_type, *f);
+                    if !is_object {
+                        return raw_value;
+                    }
                     return self.box_raw_value_f64(raw_value);
                 }
                 LiteralKind::Bool(b) => {
                     let bool_type = LLVMInt1TypeInContext(self.context);
                     let raw_value = LLVMConstInt(bool_type,*b as u64, 0);
+                    if !is_object {
+                        return raw_value;
+                    }
                     return self.box_raw_value_bool(raw_value);
                 }
                 _ => panic!("not implemented!")
@@ -550,11 +559,11 @@ impl<'a> CodeGen<'a> {
 
     fn set_insert_point_before_terminator(&self, bb: LLVMBasicBlockRef) {
         unsafe {
-            let TermInst = LLVMGetBasicBlockTerminator(bb);
-            if TermInst.is_null() {
+            let term_inst = LLVMGetBasicBlockTerminator(bb);
+            if term_inst.is_null() {
                 LLVMPositionBuilderAtEnd(self.builder, bb);
             } else {
-                LLVMPositionBuilderBefore(self.builder, TermInst)
+                LLVMPositionBuilderBefore(self.builder, term_inst)
             }
         }
     }
