@@ -1301,7 +1301,7 @@ impl TypedModule {
                     let mut ty_args = Vec::new();
                     for (param, arg) in params.iter().zip(args.iter()) {
                         let ty_arg = self.expr_type_check(arg, sym_table, return_ty, in_loop)?;
-                        if *param != ty_arg.ty {
+                        if *param != self.ty_ctx.get_unit() && *param != ty_arg.ty {
                             return Err(Error::custom(
                                 arg.1,
                                 format!(
@@ -2019,22 +2019,19 @@ impl TypedModule {
         Ok(())
     }
     fn add_stdlib_functions(&mut self) {
-        let getint = self.ty_ctx.func_type(vec![], self.ty_ctx.get_i32());
-        let getch = self.ty_ctx.func_type(vec![], self.ty_ctx.get_char());
+        let read_i32 = self.ty_ctx.func_type(vec![], self.ty_ctx.get_i32());
+        // let getch = self.ty_ctx.func_type(vec![], self.ty_ctx.get_char());
 
-        let putint = self
+        let println = self
             .ty_ctx
-            .func_type(vec![self.ty_ctx.get_i32()], self.ty_ctx.get_unit());
-        let putch = self
-            .ty_ctx
-            .func_type(vec![self.ty_ctx.get_char()], self.ty_ctx.get_unit());
+            .func_type(vec![self.ty_ctx.get_unit()], self.ty_ctx.get_unit());
+        // let putch = self
+        //     .ty_ctx
+        //     .func_type(vec![self.ty_ctx.get_char()], self.ty_ctx.get_unit());
 
-        let starttime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
-        let stoptime = self.ty_ctx.func_type(vec![], self.ty_ctx.get_unit());
-
-        self.func_table = self.func_table.insert("__serge_read_i32".to_string(), getint);
+        self.func_table = self.func_table.insert("__serge_read_i32".to_string(), read_i32);
         // self.func_table = self.func_table.insert("getch".to_string(), getch);
-        self.func_table = self.func_table.insert("__serge_println".to_string(), putint);
+        self.func_table = self.func_table.insert("__serge_println".to_string(), println);
         // self.func_table = self.func_table.insert("putch".to_string(), putch);
         // self.func_table = self.func_table.insert("starttime".to_string(), starttime);
         // self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);

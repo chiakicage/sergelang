@@ -35,11 +35,11 @@ fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Outpu
 
     Command::new("clang++")
         .args([
-            // "-target",
-            // "riscv64-unknown-linux-gnu",
-            // "-nostdlib",
-            // "-march=rv64imfd",
-            // "-mabi=lp64d",
+            "-target",
+            "riscv64-unknown-linux-gnu",
+            "-march=rv64imfd",
+            "-mabi=lp64d",
+            "--sysroot=/usr/riscv64-linux-gnu",
             "./runtime/libserge_runtime.a",
             "-O1",
             "-fuse-ld=lld",
@@ -64,7 +64,7 @@ fn emit_object(module: LLVMModuleRef) {
         let reloc_mode = LLVMRelocMode::LLVMRelocPIC;
         let code_model = LLVMCodeModel::LLVMCodeModelDefault;
         // set target machine
-        let triple = LLVMCreateMessage(to_c_str("x86_64-unknown-linux-gnu").as_ptr() as *const _);
+        let triple = LLVMCreateMessage(to_c_str("riscv64-unknown-linux-gnu").as_ptr() as *const _);
         LLVMSetTarget(module, triple);
 
         // create target.
@@ -82,7 +82,7 @@ fn emit_object(module: LLVMModuleRef) {
             target,
             triple,
             to_c_str(cpu).as_ptr(),
-            to_c_str("").as_ptr(),
+            to_c_str("+a,+c,+f,+m,+d").as_ptr(),
             opt_level,
             reloc_mode,
             code_model,

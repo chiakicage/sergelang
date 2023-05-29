@@ -85,8 +85,17 @@ impl<'a> CodeGen<'a> {
                 let lhs_raw = self.create_raw_operand(lhs);
                 let rhs_raw = self.create_raw_operand(rhs);
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mod => self.create_arithematic(op, typ, lhs_raw, rhs_raw),
-                    BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => self.create_compare(op, typ, lhs_raw, rhs_raw),
+                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mul => self.create_arithematic(op, typ, lhs_raw, rhs_raw),
+                    BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
+                        let typ = if lhs.typ == self.ty_ctx.get_f64() 
+                            || rhs.typ == self.ty_ctx.get_f64() 
+                        {
+                            self.ty_ctx.get_f64()
+                        } else {
+                            self.ty_ctx.get_i32()
+                        };
+                        self.create_compare(op, &typ, lhs_raw, rhs_raw)
+                    }
                     _ => panic!("not implemented!"),
                 }
             }
@@ -95,7 +104,7 @@ impl<'a> CodeGen<'a> {
                             .map(|operand| self.create_operand(operand))
                             .collect::<Vec<_>>();
                 unsafe {
-                    let func = LLVMGetNamedFunction(self.module, name.as_ptr() as *const i8);
+                    let func = LLVMGetNamedFunction(self.module, to_c_str(name).as_ptr());
                     LLVMBuildCall2(self.builder, 
                                     self.function_type_map.get(&func).unwrap().clone(),
                                     func, 
@@ -186,17 +195,21 @@ impl<'a> CodeGen<'a> {
 
     fn create_function(&mut self, mfn: &'a Func) {
         unsafe {
-            let mfn_name = mfn.name.as_ptr() as *const i8;
+            println!("create function: {}", mfn.name);
             let mfn_type = self.ty_ctx.get_type_by_typeref(mfn.typ);
             if let Type::Callable {params: params, ret: ret} = mfn_type {
-                let ret_ty = self.object_ptr_type();
+                let ret_ty = if ret == self.ty_ctx.get_unit() {
+                    self.void_type()
+                } else {
+                    self.object_ptr_type()
+                };
                 let mut params_ty = params.iter().map(|&x| self.object_ptr_type()).collect::<Vec<_>>();
                 let fn_type = self.create_fn_type(ret_ty, 
                                                                  params_ty.as_mut_ptr(),
                                                                 params_ty.len() as u32, 
                                                                 false);
                 
-                let func = LLVMAddFunction(self.module, mfn_name, fn_type);
+                let func = LLVMAddFunction(self.module, to_c_str(&mfn.name).as_ptr(), fn_type);
                 self.function_type_map.insert(func, fn_type);
 
                 // start generate basicblocks
@@ -610,6 +623,12 @@ impl<'a> CodeGen<'a> {
     fn object_ptr_type(&self) -> LLVMTypeRef {
         unsafe {
             LLVMPointerTypeInContext(self.context, 0)
+        }
+    }
+
+    fn void_type(&self) -> LLVMTypeRef {
+        unsafe {
+            LLVMVoidTypeInContext(self.context)
         }
     }
 
