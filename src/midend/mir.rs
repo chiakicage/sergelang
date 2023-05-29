@@ -100,6 +100,7 @@ pub enum RvalueEnum {
     UnaryOperator(UnOp, Operand),
     Call(String, Vec<Operand>),
     Operand(Operand),
+    Index(Operand, Operand),
 }
 
 impl From<Operand> for Rvalue {
@@ -464,10 +465,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 let var = self.create_variable(None, *ty);
                 let value = Rvalue {
                     typ: *ty,
-                    val: Box::new(RvalueEnum::Call(
-                        "__serge_array_index".to_string(),
-                        vec![array, index],
-                    )),
+                    val: Box::new(RvalueEnum::Index(array, index)),
                 };
                 let stmt = Stmt {
                     left: Some(var),

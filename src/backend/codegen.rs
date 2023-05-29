@@ -113,6 +113,40 @@ impl<'a> CodeGen<'a> {
                                     to_c_str("").as_ptr())
                 }
             }
+            RvalueEnum::Index(container, index) => {
+                let container_type = self.ty_ctx.get_type_by_typeref(container.typ);
+                match container_type {
+                    Type::Array(Type) => {
+                        let runtime_fn = self.get_runtime_array_read_index();
+                        let container_var = self.create_operand(container);
+                        let raw_index = self.create_raw_operand(index);
+                        let mut args = [container_var, raw_index];
+                        unsafe {
+                            LLVMBuildCall2(self.builder,
+                                          self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                          runtime_fn,
+                                          args.as_mut_ptr(),
+                                          2,
+                                          to_c_str("array_index").as_ptr())
+                        }
+                    },
+                    Type::Tuple(_) => {
+                        let runtime_fn = self.get_runtime_extract_tuple_field();
+                        let container_var = self.create_operand(container);
+                        let raw_index = self.create_raw_operand(index);
+                        let mut args = [container_var, raw_index];
+                        unsafe {
+                            LLVMBuildCall2(self.builder,
+                                          self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                          runtime_fn,
+                                          args.as_mut_ptr(),
+                                          2,
+                                          to_c_str("array_index").as_ptr())
+                        }
+                    },
+                    _ => { panic!("only array and tuple allow indexing!"); }
+                }
+            }
             RvalueEnum::Operand(operand) => self.create_operand(operand),
             _ => { panic!("not implemented1") }
         }
