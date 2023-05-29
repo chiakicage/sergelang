@@ -6,16 +6,16 @@
 // we use 'int' a.k.a. int32 to represent size
 
 extern "C"
-SergeArray *__serge_alloc_array();
+SergeArray *__serge_alloc_array(const int capacity);
 
 extern "C"
 int __serge_array_length(const SergeArray *array);
 
 extern "C"
-GCObjectHandle __serge_array_read_index(const SergeArray *array, const SergeInt32 *index);
+GCObjectHandle __serge_array_read_index(const SergeArray *array, const uint32_t index);
 
 extern "C"
-void __serge_array_write_index(SergeArray *array, const SergeInt32 *index, const GCObjectHandle value);
+void __serge_array_write_index(SergeArray *array, const uint32_t index, const GCObjectHandle value);
 
 extern "C"
 void __serge_array_push_back(SergeArray *array, GCObjectHandle value);
