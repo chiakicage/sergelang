@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ptr::null_mut;
+use std::sync::Arc;
 use std::thread::current;
 
 use crate::midend::mir::*;
@@ -167,11 +168,15 @@ impl<'a> CodeGen<'a> {
                         if current_bb != exit_bb {
                             LLVMBuildBr(self.builder, exit_bb);
                         }
-                        let ret_val = LLVMBuildLoad2(self.builder, 
-                                        self.object_ptr_type(),
-                                            ret_ptr,
-                                        to_c_str("ret_val").as_ptr());
-                        LLVMBuildRet(self.builder, ret_val);
+                        if !ret_ptr.is_null() {
+                            let ret_val = LLVMBuildLoad2(self.builder, 
+                                            self.object_ptr_type(),
+                                                ret_ptr,
+                                            to_c_str("ret_val.ptr").as_ptr());
+                            LLVMBuildRet(self.builder, ret_val);
+                        } else {
+                            LLVMBuildRetVoid(self.builder);
+                        }
                     }
                 }
                 _ => { panic!("not implemented"); }
@@ -199,8 +204,6 @@ impl<'a> CodeGen<'a> {
                 let alloca_bb = LLVMAppendBasicBlock(func, to_c_str("alloca").as_ptr());
                 // set insert point
                 self.set_insert_point_before_terminator(alloca_bb);
-                // create ret value basic block
-                let ret_ptr = LLVMBuildAlloca(self.builder, self.object_ptr_type(), to_c_str("ret_val.ptr").as_ptr());
 
                 // emit all BB
                 let mut block_map = HashMap::new();
@@ -209,7 +212,9 @@ impl<'a> CodeGen<'a> {
                     let bb = LLVMAppendBasicBlock(func, to_c_str(&name).as_ptr() );   
                     block_map.insert(blockref, bb);
                 }
-                
+                // ret_ptr
+                let mut ret_ptr = null_mut();
+
                 // jump from alloca bb to the first code bb.
                 let entry_bb = block_map.get(&mfn.entry).unwrap().clone();
                 LLVMBuildBr(self.builder, entry_bb);
@@ -232,6 +237,20 @@ impl<'a> CodeGen<'a> {
                 self.store_fn_variables(&mfn.variables, &mfn.params);
                 // alloca slots for temp variables
                 self.store_temp_variable(&mfn.variables, &mfn.temporaries);
+
+                // get return value slot
+                if let Some(ret_var) = &mfn.return_value {
+                    let (_, slot) = self.function.
+                                        as_ref().
+                                        unwrap().
+                                        symbol_value_map.
+                                        get(ret_var).
+                                        unwrap();
+                    self.function.
+                        as_mut().
+                        unwrap().
+                        ret_ptr = slot.clone();
+                }
 
                 // generate instructions.
                 self.create_stmts(&mfn.blocks);
