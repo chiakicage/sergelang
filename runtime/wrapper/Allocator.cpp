@@ -53,6 +53,9 @@ struct AllocatorImpl {
     FreeBlockList *FreeListHead = nullptr;
     // stack 
     char *stack_top;
+    // monitor, gc trigger
+    size_t allocated_memory = 0;
+    static constexpr size_t WATER_MARK = 10 * 1024; // 10 KB
 
     // GC main process.
     void mark();
@@ -181,6 +184,13 @@ void *AllocatorImpl::allocate(size_t n) {
         fprintf(stderr, "allocate object at %p, size = %ld\n", ptr, n);
     });
     Heaps.insert(ptr);
+    // check if we need GC
+    allocated_memory += n;
+    if (allocated_memory > WATER_MARK) {
+        mark();
+        sweep();
+    }
+
     return ptr;
 }
 

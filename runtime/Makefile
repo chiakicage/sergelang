@@ -2,15 +2,22 @@ export CC := clang
 export CXX := clang++
 
 ARCH ?= riscv64
+DBG ?= 0
 include target.$(ARCH)
 
 INCLUDES := -I $(shell pwd)/std -I $(shell pwd)/wrapper
-OPT := -O2
+ifeq ($(DBG), 0)
+	OPT := -O2
+	DEFS := -DNDEBUG
+else 
+	OPT := -O0 -g
+	DEFS := 
+endif
 LINKER := -fuse-ld=lld
 OPTIONS := -ffunction-sections -fdata-sections -fPIC -gdwarf-4 -fno-omit-frame-pointer -Wall -Wextra -fno-rtti -fno-exceptions
 AR := ar
 
-export CXXFLAGS := $(TARGET) $(INCLUDES) $(OPT) $(LINER) $(OPTIONS)
+export CXXFLAGS := $(TARGET) $(INCLUDES) $(OPT) $(DEFS) $(LINER) $(OPTIONS)
 
 .PHONY: clean
 all:
