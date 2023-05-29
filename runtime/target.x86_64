@@ -1,0 +1,1 @@
+TARGET := -target x86_64-pc-linux-gnu -march=core-avx2
