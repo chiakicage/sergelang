@@ -32,7 +32,7 @@ int __serge_tuple_length(const SergeTuple *Tuple) {
 }
 
 extern "C"
-GCObjectHandle __serge_extract_tuple_field(const SergeTuple *Tuple, int Index) {
+GCObjectHandle __serge_extract_tuple_field(const SergeTuple *Tuple, const uint32_t Index) {
     if (Tuple->Length < Index) 
         __serge_panic("tuple index exceeded!");
     return Tuple->Fields[Index];

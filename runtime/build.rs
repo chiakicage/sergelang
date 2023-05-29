@@ -76,8 +76,7 @@ fn main() {
     cfg.includes(include_dirs);    
 
     rerun_if_changed_anything_in_dir(Path::new("std"));
-    cfg.file("std/stdcppshim.cpp")
-        .file("std/io.cpp");
+    cfg.file("std/io.cpp");
 
     rerun_if_changed_anything_in_dir(Path::new("wrapper"));
     cfg.file("wrapper/Allocator.cpp")
