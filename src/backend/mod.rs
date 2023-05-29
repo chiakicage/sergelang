@@ -338,7 +338,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 match primitive {
                     PrimitiveType::Float => {
                         let float_ptr = &lit_ptr.const_cast(self.context.f64_type().ptr_type(AddressSpace::default()).into());
-                        let tmp_float = self.builder.build_load(self.context.f64_type().ptr_type(AddressSpace::default()), float_ptr.to_owned(), "");
+                        let tmp_float = self.builder.build_load(self.context.f64_type(), float_ptr.to_owned(), "");
                         return Some(tmp_float.into_float_value());
                     }
                     _ => {return None;}
@@ -405,10 +405,11 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let mut local_sym_table : SymTable<String, Type> = parent_sym_table.clone();
         let mut local_sym_ptr_table : SymTable<String, inkwell::values::PointerValue> = parent_sym_ptr_table.clone();
         
+        let mut tmp_res : TypedPointervalue_table = TypedPointervalue_table::new_None(parent_sym_table.clone(), parent_sym_ptr_table.clone());
         for expr in &typedBlock.exprs {
             let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
             func_name_table.clone_into(&mut tmp_table);
-            let tmp_res = self.codegen_expr(expr,
+            tmp_res = self.codegen_expr(expr,
                 local_sym_table, 
                 local_sym_ptr_table,
                 tmp_table,
@@ -416,6 +417,42 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             local_sym_table = tmp_res.sym_table.clone();
             local_sym_ptr_table = tmp_res.sym_ptr_table.clone();
         }
+        let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
+        func_name_table.clone_into(&mut tmp_table);
+        
+        if let Some(type_ptr) = tmp_res.TypePointer {
+            let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
+            let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
+            let mut float_flag : i32 = 0;
+            if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
+                float_flag = 1;
+                pointee_type_int = self.context.struct_type(&[self.context.f64_type().into()], false);
+            }
+            else {
+                if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int) {
+                    pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
+                }
+                else if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char){
+                    pointee_type_int = self.context.struct_type(&[self.context.i8_type().into()], false);
+                }
+                else {
+                    pointee_type_int = self.context.struct_type(&[self.context.bool_type().into()], false);
+                }
+            }
+            let mut return_value;
+            if float_flag == 1{
+                return_value = self.builder.build_load(pointee_type_float, type_ptr.ptr.to_owned().const_cast(pointee_type_float.ptr_type(AddressSpace::default())), "").into_struct_value();
+            }
+            else {
+                return_value = self.builder.build_load(pointee_type_int, type_ptr.ptr.to_owned().const_cast(pointee_type_int.ptr_type(AddressSpace::default())), "").into_struct_value();
+            }
+            
+            self.builder.build_return(Some(&return_value));
+        }
+        else {
+            self.builder.build_return(None);
+        }
+
     }
 
     
@@ -436,9 +473,24 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);    
             }
-            // TypedExpr::BinOp(typeBinop) => {
-                
-            // }
+            TypedExpr::BinOp(typeBinop) => {
+                let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
+                func_name_table.clone_into(&mut tmp_table);
+
+                let mut tmp_sym_table : SymTable<String, Type> = SymTable::new();
+                block_sym_table.clone_into(&mut tmp_sym_table);
+                let mut tmp_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
+                block_sym_ptr_table.clone_into(&mut tmp_sym_ptr_table);
+
+                let mut ret =  self.codegen_binOP(&typeBinop, 
+                    tmp_sym_table, 
+                    tmp_sym_ptr_table,
+                    tmp_table);
+
+                ret.sym_table = block_sym_table.clone();
+                ret.sym_ptr_table = block_sym_ptr_table.clone();
+                return ret;
+            }
             // TypedExpr::Block() => {
                 
             // }
@@ -514,9 +566,24 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             // TypedExpr::Tuple() => {
                 
             // }
-            // TypedExpr::UnOp(typedUnOp) => {
-            //     return self.codegen_unOp(&typedUnOp, &mut block_sym_table, &mut block_sym_ptr_table);
-            // }
+            TypedExpr::UnOp(typedUnOp) => {
+                let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
+                func_name_table.clone_into(&mut tmp_table);
+
+                let mut tmp_sym_table : SymTable<String, Type> = SymTable::new();
+                block_sym_table.clone_into(&mut tmp_sym_table);
+                let mut tmp_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
+                block_sym_ptr_table.clone_into(&mut tmp_sym_ptr_table);
+
+                let mut ret =  self.codegen_unOp(&typedUnOp, 
+                                                                      tmp_sym_table, 
+                                                                      tmp_sym_ptr_table,
+                                                                      tmp_table);
+
+                ret.sym_table = block_sym_table.clone();
+                ret.sym_ptr_table = block_sym_ptr_table.clone();
+                return ret;
+            }
             TypedExpr::Variable(var) => {
                 if block_sym_table.get(&var.name) == None {
                     block_sym_table.insert(
@@ -1271,22 +1338,22 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
             let _type_ptr = self.codegen_expr(&expr, local_sym_table, local_sym_ptr_table, func_name_table);
             if let Some(type_ptr) = _type_ptr.TypePointer {
-                let mut pointee_type_int = self.context.i32_type();
-                let mut pointee_type_float = self.context.f64_type();
+                let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
+                    let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                 let mut float_flag : i32 = 0;
                 if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                     float_flag = 1;
-                    pointee_type_float = self.context.f64_type();
+                    pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                 }
                 else {
                     if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int) {
-                        pointee_type_int = self.context.i32_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
                     }
                     else if type_ptr.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char){
-                        pointee_type_int = self.context.i8_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.i8_type().into()], false);
                     }
                     else {
-                        pointee_type_int = self.context.bool_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.bool_type().into()], false);
                     }
                 }
                 let mut return_value;
@@ -1403,8 +1470,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         if let Some(var_ptr) = _var_ptr {
             if let Some(rhs_result) = _rhs.TypePointer {
                 
-                let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);;
-                let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);;
+                let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
+                let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                 let mut float_flag : i32 = 0;
                 if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                     float_flag = 1;

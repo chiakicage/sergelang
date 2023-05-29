@@ -1,13 +1,13 @@
 fn add(a: i32, b: i32) -> i32 {
     let c : i32 = a + b;
-    return c;
+    c
 }
 fn sub(a: i32, b: i32) -> i32 {
     let c: i32 = a - b;
-    return c;
+    c
 }
 
-fn main() -> i32 {
+fn main() {
     let z: f64 = 1.5;
     let a: i32 = 1;
     let b: i32 = 2;
@@ -22,5 +22,5 @@ fn main() -> i32 {
     let h: bool = (a >= b);
     let i: bool = (a <= b);
     let res : i32 = (2 * (a + b) * (a - b) / 2);
-    return res;
+    
 }
