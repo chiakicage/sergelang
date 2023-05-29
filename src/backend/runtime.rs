@@ -162,8 +162,8 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
             // array
             insert_runtime_function!(false; alloc_array: | | => ptr_type);
             insert_runtime_function!(false; array_length: |  | => int_type);
-            insert_runtime_function!(false; array_index: | ptr_type, int_type | => ptr_type);
-            insert_runtime_function!(false; array_write_index: | ptr_type, int_type, ptr_type| => void_type);
+            insert_runtime_function!(false; array_index: | ptr_type, ptr_type | => ptr_type);
+            insert_runtime_function!(false; array_write_index: | ptr_type, ptr_type, ptr_type| => void_type);
             insert_runtime_function!(false; array_push_back: | ptr_type, ptr_type | => void_type);
             // tuple
             insert_runtime_function!(true; make_tuple: | int_type | => void_type);
