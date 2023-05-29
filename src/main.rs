@@ -98,6 +98,12 @@ fn emit_object(module: LLVMModuleRef) {
             target_machine,
             pass_options,
         );
+        let mut err_string = MaybeUninit::uninit();
+        LLVMPrintModuleToFile(
+            module,
+            to_c_str("build/output_opt.ll").as_ptr(),
+            err_string.as_mut_ptr(),
+        );
         // emit object fie
         let file_type = LLVMCodeGenFileType::LLVMObjectFile;
         let mut err_message = MaybeUninit::uninit();
@@ -188,7 +194,6 @@ fn main() {
                             output_file.with_extension("").as_os_str()
                         );
                     }
-                    
                 }
                 Err(err) => {
                     errs.push(err);

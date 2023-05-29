@@ -1,0 +1,17 @@
+fn __serge_user_main() -> i32 {
+	let a: [i32] = [2, 1, 4, 7, 4, 8, 3, 6, 4, 7];
+	let n: i32 = 10;
+	__serge_println(a);
+	__serge_println(n);
+	for i in 0..n {
+		for j in (i + 1)..n {
+			if a[i] > a[j] {
+				let t: i32 = a[i];
+				a[i] = a[j];
+				a[j] = t;
+			}
+		}
+	}
+	__serge_println(a);
+	0
+}
