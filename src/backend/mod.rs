@@ -17,6 +17,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module}, types::{BasicType, AnyType, AsTypeRef}, values::{PointerValue, AsValueRef, BasicValue, BasicMetadataValueEnum}, AddressSpace,
 };
+use crate::utils::runtime::RuntimeLibrary;
 
 pub struct CodeGen<'ctx, 'a> {
     pub context: &'ctx Context,
@@ -86,6 +87,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
     }
 
     pub fn codegen(&self) {
+        self.module.insert_runtime_function_declaration();
         let i32_type = self.context.i32_type();
         let void_type = self.context.void_type();
         let fn_type = i32_type.fn_type(&[], false);

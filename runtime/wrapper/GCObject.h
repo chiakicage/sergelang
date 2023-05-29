@@ -15,6 +15,8 @@ struct GCMetaData {
         Object = 0,
         Int,
         Float,
+        Bool,
+        Unit,
         String,
         Enum,
         Tuple,
@@ -23,27 +25,34 @@ struct GCMetaData {
         NumOfKind
     };
 
-    // (reserved) pointer to object metadata
+    // (reserved) pointer to object metadata, e.g. Klass in Java
     void                    *GCPointer;
     
     // GCObject Type
     enum GCObjectKind       Kind;
 
-    // (reserved) GC Tags
-    uint8_t                 Tag;
+    // mark and sweep GC objects marks.
+    uint8_t                 Mark;
 
-    // mark and sweep GC object marks.
-    uint16_t                Mark;
+    // bitmap
+    uint16_t                Tag;
 } __attribute__((packed));
 
 
 // placeholder GC object metadata
-struct SergeObjectUnit {
+struct SergeObject {
     GCMetaData  MetaData;
     void        *Ptr;
 
     static enum GCMetaData::GCObjectKind 
     getKind() { return GCMetaData::Object; }
+};
+
+struct SergeUnit {
+    GCMetaData MetaData;
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Unit; }
 };
 
 struct SergeInt32 {
@@ -63,8 +72,15 @@ struct SergeFloat64 {
     getKind() { return GCMetaData::Float; }
 };
 
+struct SergeBool {
+    GCMetaData  MetaData;
+    bool        Data;
 
-struct SeregeString {
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Bool; }
+};
+
+struct SergeString {
     GCMetaData  MetaData;
     uint32_t    Length;
     // Pod string
@@ -85,9 +101,29 @@ struct SergeArray {
     getKind() { return GCMetaData::Array; }
 };
 
+struct SergeTuple {
+    GCMetaData  MetaData;
+    uint32_t    Length;
+    void        *Fields[0];
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Tuple; }
+};
+
+// represent a constructor of 'enum' type
+struct SergeEnum {
+    GCMetaData  MetaData;
+    uint32_t    CtorTag;
+    void        *Data;
+
+    static enum GCMetaData::GCObjectKind
+    getKind() { return GCMetaData::Enum; }
+};
+
 typedef void *GCObjectHandle;
 
-#define getMetaData(Handle) (static_cast<SergeObjectUnit *>(Handle)->MetaData)
+#define getMetaData(Handle) (static_cast<SergeObject *>(Handle)->MetaData)
+
 
 
 template <typename T, typename K>
@@ -101,7 +137,7 @@ bool isa(K value) {
 
 template <typename T>
 bool isa(void *ptr) {
-    return isa<T>(static_cast<SergeObjectUnit *>(ptr));
+    return isa<T>(static_cast<SergeObject *>(ptr));
 }
 
 

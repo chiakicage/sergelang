@@ -11,4 +11,12 @@
 
 #define alias(name) __attribute__((alias(name)))
 
-void __serge_runtime_panic(const char *msg);
+extern "C"
+void __serge_panic(const char *msg);
+
+#ifndef NDEBUG
+#define SERGE_DEBUG(x) do {x} while(0)
+#else
+#define 
+#define SERGE_DEBUG(x) {}
+#endif
