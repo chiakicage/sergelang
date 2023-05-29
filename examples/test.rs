@@ -1,8 +1,10 @@
 fn add(a: i32, b: i32) -> i32 {
-    a + b
+    let c : i32 = a + b;
+    return c;
 }
 fn sub(a: i32, b: i32) -> i32 {
-    a - b
+    let c: i32 = a - b;
+    return c;
 }
 
 fn main() -> i32 {
@@ -19,5 +21,6 @@ fn main() -> i32 {
     let g: bool = (a < b);
     let h: bool = (a >= b);
     let i: bool = (a <= b);
-    (2 * (a + b) * (a - b) / 2)
+    let res : i32 = (2 * (a + b) * (a - b) / 2);
+    return res;
 }

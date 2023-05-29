@@ -1229,8 +1229,12 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                             }
                             else  {
                                 let real_real_result = real_result.left().unwrap();
-                                let real_real_result_ptr = self.builder.build_alloca(real_real_result.get_type(), "");
-                                self.builder.build_store(real_real_result_ptr, real_real_result);
+
+                                let result_pointer_type = self.type2struct_type(typedCall.ty.clone());
+                                let real_real_result_in_struct = real_real_result.into_struct_value();
+
+                                let real_real_result_ptr = self.builder.build_alloca(result_pointer_type, "");
+                                self.builder.build_store(real_real_result_ptr, real_real_result_in_struct);
                                 
                                 return TypedPointervalue_table::new(
                                     out_arg.to_owned().as_ref().to_owned(), 
@@ -1287,10 +1291,10 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 }
                 let mut return_value;
                 if float_flag == 1{
-                    return_value = self.builder.build_load(pointee_type_float, type_ptr.ptr.to_owned(), "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_float, type_ptr.ptr.to_owned().const_cast(pointee_type_float.ptr_type(AddressSpace::default())), "").into_struct_value();
                 }
                 else {
-                    return_value = self.builder.build_load(pointee_type_int, type_ptr.ptr.to_owned(), "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_int, type_ptr.ptr.to_owned().const_cast(pointee_type_int.ptr_type(AddressSpace::default())), "").into_struct_value();
                 }
                 
                 self.builder.build_return(Some(&return_value));
@@ -1343,30 +1347,30 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         if let Some(var_type) = _var_type {
             if let Some(var_ptr) = _var_ptr {
                 if let Some(rhs_result) = _rhs.TypePointer {
-                    let mut pointee_type_int = self.context.i32_type();
-                    let mut pointee_type_float = self.context.f64_type();
+                    let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
+                    let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                     let mut float_flag : i32 = 0;
                     if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                         float_flag = 1;
-                        pointee_type_float = self.context.f64_type();
+                        pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                     }
                     else {
                         if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int) {
-                            pointee_type_int = self.context.i32_type();
+                            pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
                         }
                         else if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char ){
-                            pointee_type_int = self.context.i8_type();
+                            pointee_type_int = self.context.struct_type(&[self.context.i8_type().into()], false);
                         }
                         else {
-                            pointee_type_int = self.context.bool_type();
+                            pointee_type_int = self.context.struct_type(&[self.context.bool_type().into()], false);
                         }
                     }
                     let mut return_value;
                     if float_flag == 1{
-                        return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned(), "").into_struct_value();
+                        return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned().const_cast(pointee_type_float.ptr_type(AddressSpace::default())), "").into_struct_value();
                     }
                     else {
-                        return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned(), "").into_struct_value();
+                        return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned().const_cast(pointee_type_int.ptr_type(AddressSpace::default())), "").into_struct_value();
                     }
                     
                 
@@ -1399,30 +1403,30 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         if let Some(var_ptr) = _var_ptr {
             if let Some(rhs_result) = _rhs.TypePointer {
                 
-                let mut pointee_type_int = self.context.i32_type();
-                let mut pointee_type_float = self.context.f64_type();
+                let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);;
+                let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);;
                 let mut float_flag : i32 = 0;
                 if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Float) {
                     float_flag = 1;
-                    pointee_type_float = self.context.f64_type();
+                    pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
                 }
                 else {
                     if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Int) {
-                        pointee_type_int = self.context.i32_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
                     }
                     else if rhs_result.pointer_type.to_owned() == Type::Primitive(PrimitiveType::Char ){
-                        pointee_type_int = self.context.i8_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.i8_type().into()], false);
                     }
                     else {
-                        pointee_type_int = self.context.bool_type();
+                        pointee_type_int = self.context.struct_type(&[self.context.bool_type().into()], false);
                     }
                 }
                 let mut return_value;
                 if float_flag == 1{
-                    return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned(), "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_float, rhs_result.ptr.to_owned().const_cast(pointee_type_float.ptr_type(AddressSpace::default())), "").into_struct_value();
                 }
                 else {
-                    return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned(), "").into_struct_value();
+                    return_value = self.builder.build_load(pointee_type_int, rhs_result.ptr.to_owned().const_cast(pointee_type_int.ptr_type(AddressSpace::default())), "").into_struct_value();
                 }
                 
                 self.builder.build_store(var_ptr.to_owned(), return_value);
