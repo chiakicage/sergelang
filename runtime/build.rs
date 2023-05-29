@@ -97,8 +97,8 @@ fn main() {
     runtime_library_path.push(out_dir);
     runtime_library_path.push("libsergeruntime_s.a");
     let mut output_path = PathBuf::new();
-    output_path.push(env::current_dir().unwrap().parent().unwrap());
-    output_path.push("libsergeruntime_s.a");
+    output_path.push(env::current_dir().unwrap());
+    output_path.push("libserge_runtime.a");
 
     fs::copy(&runtime_library_path, output_path).unwrap();
 
