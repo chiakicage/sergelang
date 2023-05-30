@@ -5,5 +5,7 @@ Sergelang is a programming language for the final project of the course "Compile
 ## Usage
 ### Run
 ```bash
+# assume your riscv64 gcc toolchains is in /usr/riscv64-linux-gnu
 cargo run -- examples/test.rs
+qemu-riscv64 -L /usr/riscv64-linux-gnu ./build/output
 ```

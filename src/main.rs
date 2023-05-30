@@ -11,144 +11,119 @@ mod utils;
 use ast::*;
 use frontend::lexer::lexer;
 use frontend::parser::parser;
-use midend::type_check::module_type_check;
+use midend::mir::MIR;
+use midend::typed_ast::TypedModule;
 use utils::error::Span;
 
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    targets::{
-        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
-    },
-    OptimizationLevel,
-};
+use libc::*;
+use llvm_sys::core::*;
+use llvm_sys::prelude::*;
+use llvm_sys::target::*;
+use llvm_sys::target_machine::*;
+use llvm_sys::transforms::pass_builder::*;
 
-use backend::CodeGen;
+use backend::codegen::CodeGen;
+use utils::to_c_str;
 
-use std::ffi::OsStr;
+use std::ffi::{CString, OsStr};
+use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
+use std::ptr::null_mut;
 
-// use rpds::HashTrieMap;
-
-// type SymTable<K, V> = Vec<HashMap<K, V>>;
-// #[derive(Debug, Clone, Copy)]
-// struct FuncEntry<'a> {
-//     name: &'a String,
-//     args: &'a Vec<String>,
-//     body: &'a Expr,
-// }
-
-// type SymTable<K, V> = HashTrieMap<K, V>;
-
-// fn eval<'a>(
-//     expr: &'a Expr,
-//     vars: &SymTable<&'a String, f64>,
-//     funcs: &SymTable<&'a String, FuncEntry<'a>>,
-// ) -> Result<f64, String> {
-//     match expr {
-//         Expr::Num(x) => Ok(*x),
-//         // Expr::Neg(a) => Ok(-eval(a, vars, funcs)?),
-//         // Expr::Add(a, b) => Ok(eval(a, vars, funcs)? + eval(b, vars, funcs)?),
-//         // Expr::Sub(a, b) => Ok(eval(a, vars, funcs)? - eval(b, vars, funcs)?),
-//         // Expr::Mul(a, b) => Ok(eval(a, vars, funcs)? * eval(b, vars, funcs)?),
-//         // Expr::Div(a, b) => Ok(eval(a, vars, funcs)? / eval(b, vars, funcs)?),
-//         Expr::UnOpExpr { op, rhs } => match op {
-//             UnOp::Neg => Ok(-eval(rhs, vars, funcs)?),
-//             _ => unimplemented!(),
-//         },
-//         Expr::BinOpExpr { lhs, op, rhs } => match op {
-//             BinOp::Add => Ok(eval(lhs, vars, funcs)? + eval(rhs, vars, funcs)?),
-//             BinOp::Sub => Ok(eval(lhs, vars, funcs)? - eval(rhs, vars, funcs)?),
-//             BinOp::Mul => Ok(eval(lhs, vars, funcs)? * eval(rhs, vars, funcs)?),
-//             BinOp::Div => Ok(eval(lhs, vars, funcs)? / eval(rhs, vars, funcs)?),
-
-//             _ => unimplemented!(),
-//         },
-//         Expr::Var(name) => {
-//             if let Some(value) = vars.get(name) {
-//                 Ok(*value)
-//             } else {
-//                 Err(format!("undefined variable: {}", name))
-//             }
-//         }
-//         // Expr::Let { name, rhs, then } => {
-//         //     let value = eval(rhs, vars, funcs)?;
-//         //     let output = eval(then, &vars.insert(name, value), funcs);
-//         //     output
-//         // }
-//         // Expr::Fn {
-//         //     name,
-//         //     args,
-//         //     body,
-//         //     then,
-//         // } => {
-//         //     let output = eval(
-//         //         then,
-//         //         vars,
-//         //         &funcs.insert(name, FuncEntry { name, args, body }),
-//         //     );
-//         //     output
-//         // }
-//         Expr::Call(name, argexprs) => {
-//             if let Some(FuncEntry { name, args, body }) = funcs.get(name).copied() {
-//                 if argexprs.len() == args.len() {
-//                     let args = argexprs
-//                         .iter()
-//                         .map(|expr| eval(expr, vars, funcs))
-//                         .zip(args.iter())
-//                         .map(|(val, name)| Ok((name, val?)))
-//                         .collect::<Result<Vec<(&String, f64)>, String>>()?;
-//                     let vars_new = args.iter().fold(vars.clone(), |vars, (name, val)| {
-//                         vars.insert(name, *val)
-//                     });
-//                     let output = eval(body, &vars_new, funcs);
-//                     output
-//                 } else {
-//                     Err(format!("wrong number of arguments to function: {}", name))
-//                 }
-//             } else {
-//                 Err(format!("undefined function: {}", name))
-//             }
-//         }
-//         // _ => unreachable!(),
-//     }
-// }
 fn call_system_linker(input: &Path, output: &Path) -> Result<std::process::Output, String> {
     use std::process::Command;
 
-    Command::new("clang")
+    Command::new("clang++")
         .args([
-            "-Wall",
-            "-Werror",
-            "-nostdlib",
-            "-static",
             "-target",
-            "riscv64-unknown-linux-elf",
+            "riscv64-unknown-linux-gnu",
             "-march=rv64imfd",
             "-mabi=lp64d",
-            "-L/home/cage/Code/PL/sysy-runtime-lib/build",
-            "-lsysy",
+            "--sysroot=/usr/riscv64-linux-gnu",
+            "./runtime/libserge_runtime.a",
             "-O1",
             "-fuse-ld=lld",
         ])
         .arg(input)
         .arg("-o")
         .arg(output)
-        // .args([OsStr::new("-Wall -Werror -nostdlib -static -target riscv64-unknown-linux-elf -march=rv64imfd -mabi=lp64d -L/home/cage/Code/PL/sysy-runtime-lib/build -lsysy -O1 -fuse-ld=lld -v"), input.as_os_str(), OsStr::new("-o"), output.as_os_str()])
         .output()
         .map_err(|e| e.to_string())
+}
+
+fn emit_object(module: LLVMModuleRef) {
+    unsafe {
+        // initialization
+        LLVM_InitializeAllTargetInfos();
+        LLVM_InitializeAllTargets();
+        LLVM_InitializeAllTargetMCs();
+        LLVM_InitializeAllAsmParsers();
+        LLVM_InitializeAllAsmPrinters();
+
+        let opt_level = LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault;
+        let reloc_mode = LLVMRelocMode::LLVMRelocPIC;
+        let code_model = LLVMCodeModel::LLVMCodeModelDefault;
+        // set target machine
+        let triple = LLVMCreateMessage(to_c_str("riscv64-unknown-linux-gnu").as_ptr() as *const _);
+        LLVMSetTarget(module, triple);
+
+        // create target.
+        let mut target = std::ptr::null_mut();
+        let mut error_string = MaybeUninit::uninit();
+        let return_code = LLVMGetTargetFromTriple(triple, &mut target, error_string.as_mut_ptr());
+        if return_code != 0 {
+            puts(*error_string.as_ptr());
+            exit(1);
+        }
+
+        // create target machine.
+        let cpu = "generic";
+        let target_machine = LLVMCreateTargetMachine(
+            target,
+            triple,
+            to_c_str(cpu).as_ptr(),
+            to_c_str("+a,+c,+f,+m,+d").as_ptr(),
+            opt_level,
+            reloc_mode,
+            code_model,
+        );
+
+        // run passes
+        let pass_options = LLVMCreatePassBuilderOptions();
+        LLVMPassBuilderOptionsSetDebugLogging(pass_options, 1);
+
+        LLVMRunPasses(
+            module,
+            to_c_str("default<O2>").as_ptr(),
+            target_machine,
+            pass_options,
+        );
+        let mut err_string = MaybeUninit::uninit();
+        LLVMPrintModuleToFile(
+            module,
+            to_c_str("build/output_opt.ll").as_ptr(),
+            err_string.as_mut_ptr(),
+        );
+        // emit object fie
+        let file_type = LLVMCodeGenFileType::LLVMObjectFile;
+        let mut err_message = MaybeUninit::uninit();
+        let return_code = LLVMTargetMachineEmitToFile(
+            target_machine,
+            module,
+            to_c_str("build/output.o").as_ptr() as *mut _,
+            file_type,
+            err_message.as_mut_ptr(),
+        );
+        if return_code != 0 {
+            puts(*error_string.as_ptr());
+            exit(1);
+        }
+    }
 }
 
 fn main() {
     let filename = std::env::args().nth(1).unwrap();
     let src = std::fs::read_to_string(&filename).unwrap();
-    // let a = 1;
-    // let b = 2;
-    // let a = match (a, b) {
-    //     (1, 2) => { 123 }
-    // };
-    // println!("{}", a);
 
     println!("{:#?}", src);
     let (tokens, errs) = lexer().parse(src.as_str()).into_output_errors();
@@ -164,17 +139,64 @@ fn main() {
             .into_output_errors();
         if let Some(ast) = ast {
             ast_walk(&ast);
-            // println!("{:#?}", ast);
-            // println!("{:#?}", AstPrinter::new(ast));
             let mut errs = Vec::new();
-            match module_type_check(&ast) {
+            let mut output_file = PathBuf::from("build/output.o");
+            match TypedModule::create_from_ast(&ast) {
                 Ok(typed_ast) => {
                     println!("type check passed");
                     // println!("{:#?}", typed_ast);
+                    let mut mir = MIR::create_from_typed_ast(&typed_ast);
+                    println!("generate middle IR");
+                    println!("{:#?}", mir);
+                    // println!("{:#?}", mir);
+                    let mut llvm_ir_codegen = CodeGen::new(&mir.name_ctx, &mir.ty_ctx);
+                    llvm_ir_codegen.create_module(&mir);
+                    // emit LLVM IR file
+                    unsafe {
+                        let mut err_string = MaybeUninit::uninit();
+                        LLVMPrintModuleToFile(
+                            llvm_ir_codegen.module,
+                            to_c_str("build/output.ll").as_ptr(),
+                            err_string.as_mut_ptr(),
+                        );
+                    }
+                    // emit object
+                    emit_object(llvm_ir_codegen.module);
+                    // call linker here
+                    let handle_err = |err: String| -> Result<(), ()> {
+                        println!("{} {:?}", "::", err.as_str());
+                        Err(())
+                    };
+                    let handle_output = |out: std::process::Output| -> Result<(), ()> {
+                        if out.status.success() {
+                            println!("{} Try to link the object file", "::");
+                        } else {
+                            println!("{} Try to link the object file", "::");
+                        }
+                        let stdout = std::str::from_utf8(out.stdout.as_slice()).unwrap_or_default();
+                        let stderr = std::str::from_utf8(out.stderr.as_slice()).unwrap_or_default();
+                        if !stderr.is_empty() || !stdout.is_empty() {
+                            println!("{} stderr: {} stdout: {}", "::", stderr, stdout);
+                            return Err(());
+                        }
+                        Ok(())
+                    };
+                    if call_system_linker(
+                        &output_file.with_extension("o"),
+                        &output_file.with_extension(""),
+                    )
+                    .map_or_else(handle_err, handle_output)
+                    .is_ok()
+                    {
+                        println!(
+                            "{} Write binary file into {:?}",
+                            "::",
+                            output_file.with_extension("").as_os_str()
+                        );
+                    }
                 }
                 Err(err) => {
                     errs.push(err);
-                    // println!("type check failed: {}", err);
                 }
             }
             errs.into_iter()
@@ -190,11 +212,9 @@ fn main() {
         Vec::new()
     };
 
-    // let type_check_err = expr_type_check(Expr::Var(("x", (1..2).into()))).unwrap_err();
     errs.into_iter()
         .map(|e| e.map_token(|c| c.to_string()))
         .chain(parse_errs.into_iter())
-        // .chain(vec![type_check_err].into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
                 .with_message(e.to_string())
@@ -207,83 +227,4 @@ fn main() {
                 .print(sources([(filename.clone(), src.clone())]))
                 .unwrap()
         });
-
-    let context = Context::create();
-    let module = context.create_module("main");
-    let builder = context.create_builder();
-    let mut output_file = PathBuf::from("build/out.o");
-
-    let codegen = CodeGen::new(&context, &module, &builder);
-    codegen.codegen();
-    codegen
-        .module
-        .print_to_file(output_file.with_extension("ll"))
-        .unwrap();
-
-    Target::initialize_riscv(&InitializationConfig::default());
-
-    let triple = TargetTriple::create("riscv64-unknown-linux-gnu");
-    let cpu = String::from("generic");
-    let features = String::from("+a,+c,+f,+m,+d");
-    println!("triple: {}", triple);
-    println!("cpu: {}", cpu);
-    println!("features: {}", features);
-
-    let target = Target::from_triple(&triple).unwrap();
-    let target_machine = target
-        .create_target_machine(
-            &triple,
-            &cpu,
-            &features,
-            OptimizationLevel::None,
-            RelocMode::Default,
-            CodeModel::Default,
-        )
-        .unwrap();
-    target_machine
-        .write_to_file(
-            &codegen.module,
-            FileType::Assembly,
-            &output_file.with_extension("s"),
-        )
-        .unwrap();
-
-    target_machine
-        .write_to_file(
-            &codegen.module,
-            FileType::Object,
-            &output_file.with_extension("o"),
-        )
-        .unwrap();
-    let handle_err = |err: String| -> Result<(), ()> {
-        println!("{} {:?}", "::", err.as_str());
-        Err(())
-    };
-    let handle_output = |out: std::process::Output| -> Result<(), ()> {
-        if out.status.success() {
-            println!("{} Try to link the object file", "::");
-        } else {
-            println!("{} Try to link the object file", "::");
-        }
-        let stdout = std::str::from_utf8(out.stdout.as_slice()).unwrap_or_default();
-        let stderr = std::str::from_utf8(out.stderr.as_slice()).unwrap_or_default();
-        if !stderr.is_empty() || !stdout.is_empty() {
-            println!("{} stderr: {} stdout: {}", "::", stderr, stdout);
-            return Err(());
-        }
-        Ok(())
-    };
-    if call_system_linker(
-        &output_file.with_extension("o"),
-        &output_file.with_extension(""),
-    )
-    .map_or_else(handle_err, handle_output)
-    .is_ok()
-    {
-        println!(
-            "{} Write binary file into {:?}",
-            "::",
-            output_file.with_extension("").as_os_str()
-        );
-    }
 }

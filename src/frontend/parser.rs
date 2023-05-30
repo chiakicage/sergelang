@@ -133,6 +133,8 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
     let lit = select! {
         Token::Int(x) => Literal::Int(x),
         Token::Float(y) => Literal::Float(y),
+        Token::True => Literal::Bool(true),
+        Token::False => Literal::Bool(false),
         // Token::Str(s) = span => Expr::Lit(Literal::Str(s)).(span)
     }
     .labelled("literal");
@@ -153,6 +155,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
+                .at_least(1)
                 .collect::<Vec<_>>();
 
             let tuple = items
@@ -169,6 +172,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
+                .at_least(1)
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map(|args| PatternFields::NamedFields(args));
@@ -200,6 +204,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
+            .at_least(1)
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .map_with_span(|args, span: Span| (TypeStr::Tuple(args), span));
@@ -299,7 +304,6 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .then(r#type.clone())
                     .then_ignore(just(Token::Assign))
                     .then(expr.clone())
-                    .then_ignore(just(Token::Semicolon))
                     .map_with_span(|((name, ty), rhs), span| {
                         (
                             Expr::Let {
@@ -313,7 +317,6 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
 
                 let r#return = just(Token::Return)
                     .ignore_then(expr.clone().or_not())
-                    .then_ignore(just(Token::Semicolon))
                     .map_with_span(|value, span| {
                         if let Some(e) = value {
                             (Expr::Return(Some(Box::new(e))), span)
@@ -354,28 +357,13 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                         )
                     });
 
-                let r#break = just(Token::Break)
-                    .then_ignore(just(Token::Semicolon))
-                    .map_with_span(|_tok, span: Span| (Expr::Break, span));
+                let r#break =
+                    just(Token::Break).map_with_span(|_tok, span: Span| (Expr::Break, span));
 
-                let assign = ident
-                    .clone()
-                    .then_ignore(just(Token::Assign))
-                    .then(expr.clone())
-                    .then_ignore(just(Token::Semicolon))
-                    .map_with_span(|(name, rhs), span| {
-                        (
-                            Expr::Assign {
-                                name,
-                                rhs: Box::new(rhs),
-                            },
-                            span,
-                        )
-                    });
+                
 
-                let r#continue = just(Token::Continue)
-                    .then_ignore(just(Token::Semicolon))
-                    .map_with_span(|_tok, span: Span| (Expr::Continue, span));
+                let r#continue =
+                    just(Token::Continue).map_with_span(|_tok, span: Span| (Expr::Continue, span));
 
                 let paren = expr
                     .clone()
@@ -385,6 +373,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LParen), just(Token::RParen))
                     .map_with_span(|args, span: Span| (Expr::Tuple(args), span));
@@ -393,6 +382,7 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBracket), just(Token::RBracket))
                     .map_with_span(|args, span: Span| (Expr::Array(args), span));
@@ -467,6 +457,19 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     },
                 );
 
+                let assign = call.clone().or(var.clone())
+                    .then_ignore(just(Token::Assign))
+                    .then(expr.clone())
+                    .map_with_span(|(name, rhs), span| {
+                        (
+                            Expr::Assign {
+                                name: Box::new(name),
+                                rhs: Box::new(rhs),
+                            },
+                            span,
+                        )
+                    });
+
                 let named_fields = ident
                     .then(just(Token::Colon).ignore_then(expr.clone()).or_not())
                     .separated_by(just(Token::Comma))
@@ -533,12 +536,118 @@ pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     r#let, r#return, r#while, r#for, r#break, r#continue,
                 ))
             });
+            let expr_block = block
+                .clone()
+                .map_with_span(|block, span| (Expr::Block(block), span));
+            let r#if = recursive(|r#if: Recursive<Direct<_, Spanned<Expr>, _>>| {
+                just(Token::If)
+                    .ignore_then(expr.clone())
+                    .then(expr_block.clone())
+                    .then(
+                        just(Token::Else)
+                            .ignore_then(expr_block.clone().or(r#if))
+                            .or_not(),
+                    )
+                    .map_with_span(|((cond, then), els), span| {
+                        if let Some(els) = els {
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: Some(Box::new(els)),
+                                },
+                                span,
+                            )
+                        } else {
+                            (
+                                Expr::If {
+                                    cond: Box::new(cond),
+                                    then: Box::new(then),
+                                    els: None,
+                                },
+                                span,
+                            )
+                        }
+                    })
+            });
+            let r#while = just(Token::While)
+                .ignore_then(expr.clone())
+                .then(expr_block.clone())
+                .map_with_span(|(cond, body), span| {
+                    (
+                        Expr::While {
+                            cond: Box::new(cond),
+                            body: Box::new(body),
+                        },
+                        span,
+                    )
+                });
 
-            expr.clone()
-                .repeated()
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with_span(|exprs, span| (Block(exprs), span))
+            let r#for = just(Token::For)
+                .ignore_then(ident)
+                .then_ignore(just(Token::In))
+                .then(expr.clone())
+                .then_ignore(just(Token::To))
+                .then(expr.clone())
+                .then(expr_block.clone())
+                .map_with_span(|(((var, start), end), body), span| {
+                    (
+                        Expr::For {
+                            var,
+                            start: Box::new(start),
+                            end: Box::new(end),
+                            body: Box::new(body),
+                        },
+                        span,
+                    )
+                });
+            let match_arm = pattern
+                .clone()
+                .then(just(Token::DArrow).ignore_then(expr.clone()))
+                .map_with_span(|(pattern, expr), span| (MatchArm { pattern, expr }, span));
+
+            let r#match = just(Token::Match)
+                .ignore_then(expr.clone())
+                .then(
+                    match_arm
+                        .clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                )
+                .map_with_span(|(expr, arms), span: Span| {
+                    (
+                        Expr::Match {
+                            expr: Box::new(expr),
+                            arms,
+                        },
+                        span,
+                    )
+                });
+            choice((
+                expr_block, r#if, r#match, r#while,
+                r#for,
+                // expr.clone().then_ignore(just(Token::Semicolon)),
+            ))
+            .map(BlockedExpr::WithoutSemicolon)
+            .or(expr
+                .clone()
+                .then_ignore(just(Token::Semicolon))
+                .map(BlockedExpr::WithSemicolon))
+            .repeated()
+            .collect::<Vec<_>>()
+            .then(expr.clone().map(BlockedExpr::WithoutSemicolon).or_not())
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .map_with_span(
+                |(mut stmts, expr): (Vec<BlockedExpr>, Option<BlockedExpr>), span| {
+                    if let Some(expr) = expr {
+                        stmts.push(expr);
+                    }
+                    // let return_expr: Option<Box<Spanned<Expr>>> = expr.map(|e| Box::new(e));
+                    (Block { stmts }, span)
+                },
+            )
         },
     );
 
