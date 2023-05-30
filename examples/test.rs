@@ -22,5 +22,22 @@ fn main() {
     let h: bool = (a >= b);
     let i: bool = (a <= b);
     let res : i32 = (2 * (a + b) * (a - b) / 2);
+
+    for t  in 0..10 {
+        for r in 0..20 {
+            if a > b {
+
+            }
+            else if a < b {
+
+            }
+            else if a < b {
+
+            }
+            else {
+                
+            }
+        }
+    }
     
 }
