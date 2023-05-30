@@ -39,6 +39,7 @@ pub struct FunctionEmissionState<'a> {
     entry_block: LLVMBasicBlockRef,
     exit_block: LLVMBasicBlockRef,
     ret_ptr: LLVMValueRef,
+    function_value: LLVMValueRef
 }
 
 pub struct CodeGen<'a> {
@@ -103,6 +104,7 @@ impl<'a> CodeGen<'a> {
                 let mut args = operands.iter()
                             .map(|operand| self.create_operand(operand))
                             .collect::<Vec<_>>();
+                println!("create call {}", name);
                 unsafe {
                     let func = LLVMGetNamedFunction(self.module, to_c_str(name).as_ptr());
                     LLVMBuildCall2(self.builder, 
@@ -116,7 +118,7 @@ impl<'a> CodeGen<'a> {
             RvalueEnum::Index(container, index) => {
                 let container_type = self.ty_ctx.get_type_by_typeref(container.typ);
                 match container_type {
-                    Type::Array(Type) => {
+                    Type::Array(_) => {
                         let runtime_fn = self.get_runtime_array_read_index();
                         let container_var = self.create_operand(container);
                         let raw_index = self.create_raw_operand(index);
@@ -141,7 +143,7 @@ impl<'a> CodeGen<'a> {
                                           runtime_fn,
                                           args.as_mut_ptr(),
                                           2,
-                                          to_c_str("array_index").as_ptr())
+                                          to_c_str("tuple_index").as_ptr())
                         }
                     },
                     _ => { panic!("only array and tuple allow indexing!"); }
@@ -167,7 +169,7 @@ impl<'a> CodeGen<'a> {
                 let rhs = stmt.right.as_ref().unwrap();
                 let rhs = self.create_rvalue(rhs); // may boxed value
                 // statement stored to left value (a local variable)
-                if let Some(lhs) = stmt.left {
+                if let Some(lhs) = stmt.left { 
                     let ptr = self.get_top_level_variable_addr(lhs);
                     unsafe {
                         LLVMBuildStore(self.builder, rhs, ptr);
@@ -277,11 +279,12 @@ impl<'a> CodeGen<'a> {
                     entry_block: entry_bb,
                     exit_block: exit_bb,
                     ret_ptr: ret_ptr, 
+                    function_value: func
                 });
 
                 // store arguments, local variables
-                self.store_fn_variables(&mfn.variables, &mfn.locals);
-                self.store_fn_variables(&mfn.variables, &mfn.params);
+                self.store_local_variables(&mfn.variables, &mfn.locals);
+                self.store_argument(&mfn.variables, &mfn.params);
                 // alloca slots for temp variables
                 self.store_temp_variable(&mfn.variables, &mfn.temporaries);
 
@@ -493,7 +496,7 @@ impl<'a> CodeGen<'a> {
 
     // Only used for save local variale and argument in `alloca_bb`.
     // All the local variable (i.e. has a name in user code) is object type.
-    fn store_fn_variables(&mut self, 
+    fn store_local_variables(&mut self, 
                           slots: &SlotMap<VarRef, Var>, 
                           variables: &[VarRef]) 
     {
@@ -516,6 +519,30 @@ impl<'a> CodeGen<'a> {
             }
         }
     }   
+
+    fn store_argument(&mut self, 
+                      slots: &SlotMap<VarRef, Var>,
+                      args: &Vec<VarRef>)
+    {
+        self.set_insert_point_before_terminator(self.function
+            .as_ref()
+            .unwrap()
+            .alloca_block);
+
+        for (args_index, var_ref) in args.iter().enumerate() {
+            let var = slots.get(*var_ref).unwrap();
+            let object_ty = self.object_ptr_type();
+            unsafe {
+                let state = self.function.as_mut().unwrap();
+                let stack_slot = LLVMBuildAlloca(self.builder, object_ty, to_c_str(&var.name).as_ptr());
+                let arg_value = LLVMGetParam(state.function_value, args_index as u32);
+                LLVMBuildStore(self.builder, arg_value, stack_slot);
+                state
+                    .symbol_value_map
+                    .insert(*var_ref, (true, stack_slot));
+            }
+        }       
+    }
     
     // Only used for deciding intermediate temp variables type, and create store
     fn store_temp_variable(&mut self, 
@@ -549,9 +576,6 @@ impl<'a> CodeGen<'a> {
                 state
                     .symbol_value_map
                     .insert(var_ref, (is_object, stack_slot));
-                state
-                    .deref_type_map
-                    .insert(var_ref, llvm_type);
             }
         }
     }
