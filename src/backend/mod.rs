@@ -591,7 +591,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let _compare_res = self.codegen_expr(&typedWhile.cond, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
             block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
         if let Some(compare_res) = _compare_res.TypePointer {
-            let _real_res = self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), compare_res.ptr);
+            let _real_res = self.literal_unwrap_bool(&Type::Primitive(PrimitiveType::Bool), compare_res.ptr);
             if let Some(real_res) = _real_res {
                 self.builder.build_conditional_branch(real_res, then_basic_block, end_while_basic_block);
             }

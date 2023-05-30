@@ -7,39 +7,14 @@ fn sub(a: i32, b: i32) -> i32 {
     c
 }
 
-fn main() -> i32{
-    let z: f64 = 1.5;
-    let a: i32 = 1;
-    let b: i32 = 2;
-    
-    let c: f64 = z - add(a, b) + sub(a, b);
-    let c1: i32 = a * b;
-    let c2: f64 = b * z;
-    let d: bool = (a != b);
-    let e: bool = (a == b);
-    let f: bool = (a > b);
-    let g: bool = (a < b);
-    let h: bool = (a >= b);
-    let i: bool = (a <= b);
-    let res : i32 = (2 * (a + b) * (a - b) / 2);
+fn main() {
+    let a : i32 = 1;
+    let b : i32 = 1;
 
-    for t  in 0..10 {
-        for r in 0..20 {
-            if a > b {
-                continue;
-            }
-            else if a < b {
-                continue;
-            }
-            else if a < b {
-                continue;
-            }
-            else {
-                continue;
-            }
-        }
+    while a < 200 {
+        let c : i32 = a;
+        a = add(b, c);
+        b = c;
     }
-
-    res
     
 }
