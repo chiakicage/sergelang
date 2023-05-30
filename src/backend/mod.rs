@@ -1,6 +1,8 @@
 pub use crate::midend::typed_ast::*;
+use inkwell::basic_block;
 use inkwell::values::*;
 use inkwell::types::BasicMetadataTypeEnum;
+// use inkwell::basic_block;
 pub use crate::ast::*;
 pub use crate::utils::types::*;
 pub use inkwell::IntPredicate;
@@ -117,13 +119,24 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
 
     pub fn codegen_module(&self, typedast : & TypedModule) {
+        let void_type = self.context.void_type();
+        let i32_type = self.context.i32_type();
+        let putint_fn_type = void_type.fn_type(&[i32_type.into()], false);
+        let putint_fn_value =
+            self.module
+                .add_function("putint", putint_fn_type, Some(Linkage::External));
+
+        let putch_fn_type = void_type.fn_type(&[i32_type.into()], false);
+        let putch_fn_value =
+            self.module
+                .add_function("putch", putch_fn_type, Some(Linkage::External));
 
         let mut func_name_table : SymTable<String, FunctionValue> = SymTable::new();
         let mut new_table : SymTable<String, FunctionValue> = SymTable::new();
         for func in &typedast.func_defs {
             let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
             func_name_table.clone_into(&mut tmp_table);
-            new_table = self.codegen_func(& func, tmp_table);
+            new_table = self.codegen_func(& func, tmp_table, putint_fn_value.clone(), putch_fn_value.clone());
             new_table.clone_into(&mut func_name_table);
         }
 
@@ -352,7 +365,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
     
 
-    pub fn codegen_func(&self, typedFunc : & TypedFunc, mut func_name_table :  SymTable<String, FunctionValue<'a>>) 
+    pub fn codegen_func(&self, typedFunc : & TypedFunc, mut func_name_table :  SymTable<String, FunctionValue<'a>>, putint_fn_value : FunctionValue, putch_fn_value : FunctionValue) 
     -> SymTable<String, FunctionValue<'a>>
     {
         // set up local symbol table for every level of block
@@ -393,7 +406,15 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
         func_name_table.clone_into(&mut tmp_table);
 
-        let res = self.codegen_block(& typedFunc.body, fn_value.clone(), local_sym_table, local_sym_ptr_table, tmp_table);
+        let res = self.codegen_block(& typedFunc.body, 
+                fn_value.clone(), 
+                None,
+                None,
+                local_sym_table, 
+                local_sym_ptr_table, 
+                tmp_table,
+
+            );
 
         if let Some(type_ptr) = res.TypePointer {
             let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
@@ -419,9 +440,15 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 return_value = self.builder.build_load(pointee_type_float, type_ptr.ptr.to_owned().const_cast(pointee_type_float.ptr_type(AddressSpace::default())), "").into_struct_value();
             }
             else {
+                self.builder.build_call(putint_fn_value, &[self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), type_ptr.ptr).unwrap().into()], "");
+                // print result
+                self.builder.build_call(putch_fn_value, &[self.context.i32_type().const_int(13, false).into()], "");
+                self.builder.build_call(putch_fn_value, &[self.context.i32_type().const_int(10, false).into()], "");
+                // print '\r\n'
                 return_value = self.builder.build_load(pointee_type_int, type_ptr.ptr.to_owned().const_cast(pointee_type_int.ptr_type(AddressSpace::default())), "").into_struct_value();
             }
             
+
             self.builder.build_return(Some(&return_value));
         }
         else {
@@ -434,7 +461,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         
     }
 
-    pub fn codegen_block(&self, typedBlock : & TypedBlock, fn_value : FunctionValue,
+    pub fn codegen_block(&self, typedBlock : & TypedBlock, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut parent_sym_table :  SymTable<String, Type>, 
         mut parent_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>) 
@@ -449,6 +476,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             func_name_table.clone_into(&mut tmp_table);
             tmp_res = self.codegen_expr(expr,
                 fn_value.clone(),
+                block_to_break.clone(), block_to_con.clone(),
                 local_sym_table, 
                 local_sym_ptr_table,
                 tmp_table,
@@ -464,7 +492,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
     }
 
-    pub fn codegen_if(&self, typedIf : & TypedIf, fn_value : FunctionValue,
+    pub fn codegen_if(&self, typedIf : & TypedIf, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) -> TypedPointervalue_table<'a> {
@@ -475,7 +503,14 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
         let then_basic_block = self.context.append_basic_block(fn_value.clone(), "");
         self.builder.position_at_end(then_basic_block);
-        self.codegen_block(&typedIf.then, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+        self.codegen_block(&typedIf.then, 
+            fn_value.clone(), 
+            block_to_break.clone(),
+            block_to_con.clone(),
+            block_sym_table.clone(),
+            block_sym_ptr_table.clone(), 
+            func_name_table.clone()
+            );
         
         
         let maybe_else_basic_block = self.context.append_basic_block(fn_value.clone(), "");
@@ -485,7 +520,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         
         
         self.builder.position_at_end(cond_basic_block);
-        let _compare_res = self.codegen_expr(typedIf.cond.as_ref(), fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+        let _compare_res = self.codegen_expr(typedIf.cond.as_ref(), fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
         
         if let Some(compare_res) = _compare_res.TypePointer {
             let _real_res = self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), compare_res.ptr);
@@ -495,7 +531,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         }
 
         self.builder.position_at_end(maybe_else_basic_block);
-        self.codegen_else(&typedIf.els, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+        self.codegen_else(&typedIf.els, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
 
         
 
@@ -503,18 +540,20 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
     }
 
-    pub fn codegen_else(&self, typedElse : & TypedElse, fn_value : FunctionValue,
+    pub fn codegen_else(&self, typedElse : & TypedElse, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) -> TypedPointervalue_table<'a> {
 
         match &typedElse {
             TypedElse::Else(else_only) => {
-                self.codegen_block(else_only, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+                self.codegen_block(else_only, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
                 return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
             }
             TypedElse::ElseIf(else_if) => {
-                self.codegen_if(else_if.as_ref(), fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+                self.codegen_if(else_if.as_ref(), fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
                 return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
             }
             TypedElse::None => {
@@ -525,7 +564,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         
     }
 
-    pub fn codegen_while(&self, typedWhile : & TypedWhile, fn_value : FunctionValue,
+    pub fn codegen_while(&self, typedWhile : & TypedWhile, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) -> TypedPointervalue_table<'a>{
@@ -536,14 +575,21 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
         let then_basic_block = self.context.append_basic_block(fn_value.clone(), "");
         self.builder.position_at_end(then_basic_block);
-        self.codegen_block(&typedWhile.body, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+        
+        
+        let while_block_to_con = cond_basic_block.clone();
+        let while_block_to_break = cond_basic_block.clone();    // break has not been implemented yet for some reason
+
+        self.codegen_block(&typedWhile.body, fn_value.clone(), Some(while_block_to_break), Some(while_block_to_con),
+            block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
         self.builder.build_unconditional_branch(cond_basic_block);
 
         
         let end_while_basic_block = self.context.append_basic_block(fn_value.clone(), "");
         self.builder.position_at_end(cond_basic_block.clone());
 
-        let _compare_res = self.codegen_expr(&typedWhile.cond, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+        let _compare_res = self.codegen_expr(&typedWhile.cond, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
         if let Some(compare_res) = _compare_res.TypePointer {
             let _real_res = self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), compare_res.ptr);
             if let Some(real_res) = _real_res {
@@ -555,7 +601,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
     }
 
-    pub fn codegen_for(&self, typedFor : & TypedFor, fn_value : FunctionValue,
+    pub fn codegen_for(&self, typedFor : & TypedFor, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) -> TypedPointervalue_table<'a> {
@@ -591,7 +637,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
         block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
 
-        let _res_start = self.codegen_expr(typedFor.start.as_ref(), fn_value.clone(), local_sym_table.clone(), local_sym_ptr_table.clone(), func_name_table.clone());
+        let _res_start = self.codegen_expr(typedFor.start.as_ref(), fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            local_sym_table.clone(), local_sym_ptr_table.clone(), func_name_table.clone());
         self.builder.build_store(_var_ptr.unwrap().to_owned(), 
                                 self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), 
                                     _res_start.TypePointer.unwrap().ptr).unwrap());
@@ -612,16 +659,13 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
         self.builder.position_at_end(for_body_basic_block.clone());
 
-        let binop_add : TypedBinOp = TypedBinOp { 
-            op: (BinOp::Add), 
-            lhs: (Box::new(TypedExpr::Variable(TypedVariable { name: (typedFor.var.clone()), ty: (Type::Primitive(PrimitiveType::Int)) }))), 
-            rhs: (Box::new(TypedExpr::Literal(TypedLiteral::Int(1)))), 
-            ty: (Type::Primitive(PrimitiveType::Int)) 
-        };
-        let next_var = self.codegen_binOP(&binop_add, fn_value.clone(), tmp_local_sym_table.clone(), tmp_local_sym_ptr_table.clone(), func_name_table.clone());
-        self.builder.build_store(*block_sym_ptr_table.get(var_name).unwrap(), self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), next_var.TypePointer.unwrap().ptr).unwrap());
         
-        self.codegen_block(&typedFor.body, fn_value.clone(), tmp_local_sym_table.clone(), tmp_local_sym_ptr_table.clone(), func_name_table.clone());
+        let for_block_to_break = for_cond_basic_block.clone();  // break has not been implemented yet
+        let for_block_to_con =for_cond_basic_block.clone();
+
+        self.codegen_block(&typedFor.body, fn_value.clone(), Some(for_block_to_break), Some(for_block_to_con),
+            tmp_local_sym_table.clone(), tmp_local_sym_ptr_table.clone(), func_name_table.clone());
+        
         self.builder.build_unconditional_branch(for_cond_basic_block.clone());
         let for_end_basic_block = self.context.append_basic_block(fn_value.clone(), "");
         self.builder.position_at_end(for_cond_basic_block);
@@ -629,7 +673,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         if let Some(var_ptr) = tmp_local_sym_ptr_table.get(&typedFor.var) {
             // let binop_gt : TypedBinOp = TypedBinOp { op: (BinOp::Gt), lhs: (Box::new(TypedExpr::Variable(TypedVariable { name: (typedFor.var.clone()), ty: (Type::Primitive(PrimitiveType::Int)) }))), rhs: (Box::new(*typedFor.end)), ty: (Type::Primitive(PrimitiveType::Bool)) };
             // let binop_res = self.codegen_binOP(&binop_gt, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
-            let _res_end = self.codegen_expr(typedFor.end.as_ref(), fn_value.clone(), local_sym_table.clone(), local_sym_ptr_table.clone(), func_name_table.clone());
+            let _res_end = self.codegen_expr(typedFor.end.as_ref(), fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                local_sym_table.clone(), local_sym_ptr_table.clone(), func_name_table.clone());
             let binop_res = 
                 self.builder.build_int_compare(IntPredicate::SLT, 
                                                 self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), 
@@ -638,6 +683,16 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                                                     _res_end.TypePointer.unwrap().ptr).unwrap(), 
                                                 "");
             // "for i in 0...10" binop_res = ?(i > 10)
+
+            let binop_add : TypedBinOp = TypedBinOp { 
+                op: (BinOp::Add), 
+                lhs: (Box::new(TypedExpr::Variable(TypedVariable { name: (typedFor.var.clone()), ty: (Type::Primitive(PrimitiveType::Int)) }))), 
+                rhs: (Box::new(TypedExpr::Literal(TypedLiteral::Int(1)))), 
+                ty: (Type::Primitive(PrimitiveType::Int)) 
+            };
+            let next_var = self.codegen_binOP(&binop_add, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                tmp_local_sym_table.clone(), tmp_local_sym_ptr_table.clone(), func_name_table.clone());
+            self.builder.build_store(*block_sym_ptr_table.get(var_name).unwrap(), self.literal_unwrap_int(&Type::Primitive(PrimitiveType::Int), next_var.TypePointer.unwrap().ptr).unwrap());
 
             self.builder.build_conditional_branch(
                 binop_res, 
@@ -656,7 +711,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         
     }
 
-    pub fn codegen_expr(&self, typedExpr : & TypedExpr, fn_value : FunctionValue,
+    pub fn codegen_expr(&self, typedExpr : & TypedExpr, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) -> TypedPointervalue_table<'a> {
@@ -666,7 +721,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
             // }
             TypedExpr::Assign(typeAssign) => {
-                let tmp_res = self.codegen_assign(typeAssign, fn_value.clone(), block_sym_table, block_sym_ptr_table, func_name_table);
+                let tmp_res = self.codegen_assign(typeAssign, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                    block_sym_table, block_sym_ptr_table, func_name_table);
                 block_sym_table = tmp_res.sym_table.clone();
                 block_sym_ptr_table = tmp_res.sym_ptr_table.clone();
 
@@ -683,6 +739,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
                 let mut ret =  self.codegen_binOP(&typeBinop, 
                     fn_value.clone(),
+                    block_to_break.clone(),
+                    block_to_con.clone(),
                     tmp_sym_table, 
                     tmp_sym_ptr_table,
                     tmp_table);
@@ -692,12 +750,15 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 return ret;
             }
             TypedExpr::Block(typedBlock) => {
-                return self.codegen_block(&typedBlock, fn_value.clone(), 
+                return self.codegen_block(&typedBlock, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
                 block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
 
             }
             // TypedExpr::Break => {
-                
+            //     if let Some(break_to_jump) = block_to_break {
+            //         self.builder.build_unconditional_branch(break_to_jump);
+            //     }
+            //     return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
             // }
             TypedExpr::Call(typedCall) => {
                 let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
@@ -710,6 +771,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
                 let mut ret =  self.codegen_call(&typedCall, 
                                                                       fn_value.clone(),
+                                                                      block_to_break.clone(), block_to_con.clone(),
                                                                       tmp_sym_table, 
                                                                       tmp_sym_ptr_table,
                                                                       tmp_table);
@@ -721,25 +783,31 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             // TypedExpr::Closure() => {
                 
             // }
-            // TypedExpr::Continue => {
-                
-            // }
+            TypedExpr::Continue => {
+                if let Some(con_to_jump) = block_to_con {
+                    self.builder.build_unconditional_branch(con_to_jump);
+                }
+                return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
+            }
             // TypedExpr::Ctor() => {
                 
             // }
             TypedExpr::For(typedFor) => {
-                self.codegen_for(&typedFor, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+                self.codegen_for(&typedFor, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                    block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
             }
             TypedExpr::If(typedIf) => {
-                self.codegen_if(&typedIf, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+                self.codegen_if(&typedIf, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                    block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
             }
             // TypedExpr::Index() => {
                 
             // }
             TypedExpr::Let(typelet) => {
-                let tmp_res = self.codegen_let(&typelet, fn_value.clone(), block_sym_table, block_sym_ptr_table, func_name_table);
+                let tmp_res = self.codegen_let(&typelet, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                     block_sym_table, block_sym_ptr_table, func_name_table);
                 block_sym_table = tmp_res.sym_table.clone();
                 block_sym_ptr_table = tmp_res.sym_ptr_table.clone();
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
@@ -765,7 +833,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 let mut tmp_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
                 block_sym_ptr_table.clone_into(&mut tmp_sym_ptr_table);
 
-                self.codegen_return(&typeReturn, fn_value.clone(), tmp_sym_table, tmp_sym_ptr_table, tmp_table);
+                self.codegen_return(&typeReturn, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                    tmp_sym_table, tmp_sym_ptr_table, tmp_table);
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
             }
             // TypedExpr::Tuple() => {
@@ -782,6 +851,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
                 let mut ret =  self.codegen_unOp(&typedUnOp, 
                                                                       fn_value.clone(),
+                                                                      block_to_break.clone(), block_to_con.clone(),
                                                                       tmp_sym_table, 
                                                                       tmp_sym_ptr_table,
                                                                       tmp_table);
@@ -818,14 +888,15 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
                 
             }
             TypedExpr::While(typedWhile) => {
-                self.codegen_while(&typedWhile, fn_value.clone(), block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
+                self.codegen_while(&typedWhile, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                    block_sym_table.clone(), block_sym_ptr_table.clone(), func_name_table.clone());
                 return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table);
             }
             _ => { return TypedPointervalue_table::new_None(block_sym_table, block_sym_ptr_table); }
         }
     }
     
-    pub fn codegen_binOP(&self, typedBinOp : & TypedBinOp, fn_value : FunctionValue,
+    pub fn codegen_binOP(&self, typedBinOp : & TypedBinOp, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table : SymTable<String, Type>, 
         mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>) 
@@ -845,8 +916,10 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             let mut local_sym_ptr_table_2 : SymTable<String, PointerValue> = SymTable::new();
             block_sym_ptr_table.clone_into(&mut local_sym_ptr_table_2);
 
-            let _rhs_res = self.codegen_expr(&typedBinOp.rhs, fn_value.clone(), local_sym_table, local_sym_ptr_table, tmp_func_table);
-            let _lhs_res = self.codegen_expr(&typedBinOp.lhs, fn_value.clone(), local_sym_table_2, local_sym_ptr_table_2, tmp_func_table_2);
+            let _rhs_res = self.codegen_expr(&typedBinOp.rhs, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                local_sym_table, local_sym_ptr_table, tmp_func_table);
+            let _lhs_res = self.codegen_expr(&typedBinOp.lhs, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                local_sym_table_2, local_sym_ptr_table_2, tmp_func_table_2);
             let lhs_res : &TypedPointerValue;
             let rhs_res : &TypedPointerValue;
 
@@ -1361,7 +1434,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
 
     }
 
-    pub fn codegen_unOp(&self, typedUnOp : & TypedUnOp, fn_value : FunctionValue,
+    pub fn codegen_unOp(&self, typedUnOp : & TypedUnOp, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table : SymTable<String, Type>, 
         mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>) 
@@ -1377,6 +1450,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let _rhs_res = self.codegen_expr(
             &typedUnOp.rhs, 
             fn_value.clone(),
+            block_to_break.clone(), block_to_con.clone(),
             local_sym_table, 
             local_sym_ptr_table,
             tmp_func_table
@@ -1465,74 +1539,71 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         }
         
     }
-    pub fn codegen_call(&self, typedCall : & TypedCall, fn_value : FunctionValue,
+    pub fn codegen_call(&self, typedCall : & TypedCall, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>) 
         -> TypedPointervalue_table<'a>{
 
+        // println!("{:?}", typedCall.ty);
+        match typedCall.func.as_ref().clone() {
+            TypedExpr::Variable(variable) => {
+                let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
+                func_name_table.clone_into(&mut tmp_table);
+                // println!("\n{:?}\nNo!!\n", fn_value);
+
+                if let Some(_fn_value) = tmp_table.get(&variable.name){
+                    let fn_value = _fn_value.to_owned().clone();
+                    let mut params :Vec<BasicMetadataValueEnum> = Vec::new();
+
+                    // println!("\n{:?}\nYes!!\n", fn_value);
         
-        match &(typedCall.ty) {
-            Type::Func(in_arg, out_arg) => {
-                match typedCall.func.as_ref().clone() {
-                    TypedExpr::Variable(variable) => {
+                    for arg in &typedCall.args {
+                        let mut local_sym_table : SymTable<String, Type> = SymTable::new();
+                        block_sym_table.clone_into(&mut local_sym_table);
+                        let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
+                        block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
                         let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
                         func_name_table.clone_into(&mut tmp_table);
+                        let tmp_arg =  self.codegen_expr(&arg, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                            local_sym_table, local_sym_ptr_table, tmp_table);
 
-                        if let Some(_fn_value) = tmp_table.get(&variable.name){
-                            let fn_value = _fn_value.clone();
-                            let mut params :Vec<BasicMetadataValueEnum> = Vec::new();
-                
-                            for arg in &typedCall.args {
-                                let mut local_sym_table : SymTable<String, Type> = SymTable::new();
-                                block_sym_table.clone_into(&mut local_sym_table);
-                                let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
-                                block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
-                                let mut tmp_table : SymTable<String, FunctionValue> = SymTable::new();
-                                func_name_table.clone_into(&mut tmp_table);
-                                let tmp_arg =  self.codegen_expr(&arg, fn_value.clone(), local_sym_table, local_sym_ptr_table, tmp_table);
-
-                                if let Some(type_ptr) = tmp_arg.TypePointer {
-                                    params.push(BasicMetadataValueEnum::PointerValue(type_ptr.ptr.to_owned()));
-                                }
-                            }
-
-                            let call_result = &self.builder.build_call(fn_value, &params, "");
-                            let real_result = call_result.try_as_basic_value();
-                            if real_result.is_right(){
-                                return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
-                            }
-                            else  {
-                                let real_real_result = real_result.left().unwrap();
-
-                                let result_pointer_type = self.type2struct_type(typedCall.ty.clone());
-                                let real_real_result_in_struct = real_real_result.into_struct_value();
-
-                                let real_real_result_ptr = self.builder.build_alloca(result_pointer_type, "");
-                                self.builder.build_store(real_real_result_ptr, real_real_result_in_struct);
-                                
-                                return TypedPointervalue_table::new(
-                                    out_arg.to_owned().as_ref().to_owned(), 
-                                    real_real_result_ptr, 
-                                    block_sym_table, 
-                                    block_sym_ptr_table
-                                );
-                            }
-                        }
-                        else {
-                            return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
+                        if let Some(type_ptr) = tmp_arg.TypePointer {
+                            params.push(BasicMetadataValueEnum::PointerValue(type_ptr.ptr.to_owned()));
                         }
                     }
-                    _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
+
+                    let call_result = &self.builder.build_call(fn_value, &params, "");
+                    let real_result = call_result.try_as_basic_value();
+                    if real_result.is_right(){
+                        return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
+                    }
+                    else  {
+                        let real_real_result = real_result.left().unwrap();
+
+                        let result_pointer_type = self.type2struct_type(typedCall.ty.clone());
+                        let real_real_result_in_struct = real_real_result.into_struct_value();
+
+                        let real_real_result_ptr = self.builder.build_alloca(result_pointer_type, "");
+                        self.builder.build_store(real_real_result_ptr, real_real_result_in_struct);
+                        
+                        return TypedPointervalue_table::new(
+                            typedCall.ty.clone(), 
+                            real_real_result_ptr, 
+                            block_sym_table, 
+                            block_sym_ptr_table
+                        );
+                    }
+                }
+                else {
+                    return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
                 }
             }
-            _ => {
-                return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
-            }
+            _ => {return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());}
         }
         return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
     }
-    pub fn codegen_return(&self, typeReturn : & TypedReturn, fn_value : FunctionValue,
+    pub fn codegen_return(&self, typeReturn : & TypedReturn, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table : SymTable<String, Type>, 
         mut block_sym_ptr_table : SymTable<String, inkwell::values::PointerValue<'a>>, 
         func_name_table : SymTable<String, FunctionValue<'a>>) 
@@ -1544,7 +1615,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
             let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
             block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
 
-            let _type_ptr = self.codegen_expr(&expr, fn_value.clone(), local_sym_table, local_sym_ptr_table, func_name_table);
+            let _type_ptr = self.codegen_expr(&expr, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+                local_sym_table, local_sym_ptr_table, func_name_table);
             if let Some(type_ptr) = _type_ptr.TypePointer {
                 let mut pointee_type_int = self.context.struct_type(&[self.context.i32_type().into()], false);
                     let mut pointee_type_float = self.context.struct_type(&[self.context.f64_type().into()], false);
@@ -1584,7 +1656,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
 
     }
-    pub fn codegen_let(&self, typeLet : & TypedLet, fn_value : FunctionValue,
+    pub fn codegen_let(&self, typeLet : & TypedLet, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>
@@ -1617,7 +1689,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
         block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
 
-        let _rhs = self.codegen_expr(&typeLet.rhs, fn_value.clone(), local_sym_table, local_sym_ptr_table, func_name_table);
+        let _rhs = self.codegen_expr(&typeLet.rhs, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            local_sym_table, local_sym_ptr_table, func_name_table);
 
         if let Some(var_type) = _var_type {
             if let Some(var_ptr) = _var_ptr {
@@ -1656,7 +1729,7 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         return TypedPointervalue_table::new_None(block_sym_table.clone(), block_sym_ptr_table.clone());
     }
 
-    pub fn codegen_assign(&self, typeAssign : & TypedAssign, fn_value : FunctionValue,
+    pub fn codegen_assign(&self, typeAssign : & TypedAssign, fn_value : FunctionValue, block_to_break : Option<BasicBlock>, block_to_con : Option<BasicBlock>,
         mut block_sym_table :  SymTable<String, Type>, 
         mut block_sym_ptr_table :  SymTable<String, inkwell::values::PointerValue<'a>>,
         func_name_table : SymTable<String, FunctionValue<'a>>
@@ -1672,7 +1745,8 @@ impl<'a, 'ctx : 'a > CodeGen<'ctx, 'a> {
         let mut local_sym_ptr_table : SymTable<String, PointerValue> = SymTable::new();
         block_sym_ptr_table.clone_into(&mut local_sym_ptr_table);
 
-        let _rhs = self.codegen_expr(&typeAssign.rhs, fn_value.clone(), local_sym_table, local_sym_ptr_table, func_name_table);
+        let _rhs = self.codegen_expr(&typeAssign.rhs, fn_value.clone(), block_to_break.clone(), block_to_con.clone(),
+            local_sym_table, local_sym_ptr_table, func_name_table);
 
 
         if let Some(var_ptr) = _var_ptr {

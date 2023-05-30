@@ -7,7 +7,7 @@ fn sub(a: i32, b: i32) -> i32 {
     c
 }
 
-fn main() {
+fn main() -> i32{
     let z: f64 = 1.5;
     let a: i32 = 1;
     let b: i32 = 2;
@@ -26,18 +26,20 @@ fn main() {
     for t  in 0..10 {
         for r in 0..20 {
             if a > b {
-
+                continue;
             }
             else if a < b {
-
+                continue;
             }
             else if a < b {
-
+                continue;
             }
             else {
-                
+                continue;
             }
         }
     }
+
+    res
     
 }
