@@ -12,7 +12,7 @@ extern "C"
 int __serge_array_length(const SergeArray *array);
 
 extern "C"
-GCObjectHandle __serge_array_read_index(const SergeArray *array, const SergeInt32 *index);
+GCObjectHandle __serge_array_read_index(const SergeArray *array, const uint32_t index);
 
 extern "C"
 void __serge_array_write_index(SergeArray *array, const SergeInt32 *index, const GCObjectHandle value);

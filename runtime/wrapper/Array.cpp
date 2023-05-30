@@ -25,11 +25,10 @@ int __serge_array_length(const SergeArray *array) {
 }
 
 extern "C"
-GCObjectHandle __serge_array_index(const SergeArray *array, const SergeInt32 *index) {
-    auto raw_index = index->Data;
-    if (array->Length < raw_index)
+GCObjectHandle __serge_array_index(const SergeArray *array, const uint32_t index) {
+    if (array->Length < index)
         __serge_panic("array index exceeded!");
-    return static_cast<GCObjectHandle *>(array->DataPtr)[raw_index];
+    return static_cast<GCObjectHandle *>(array->DataPtr)[index];
 }
 
 extern "C"
