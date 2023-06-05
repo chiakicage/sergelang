@@ -26,13 +26,13 @@ pub enum PrimitiveType {
 #[derive(Debug, Clone)]
 pub enum FieldsType {
     UnnamedFields(Vec<TypeRef>),
-    NamedFields(HashMap<String, TypeRef>),
+    NamedFields(HashMap<String, (TypeRef, usize)>),
 }
 
 #[derive(Debug, Clone)]
 pub struct Enum {
     pub name: String,
-    pub ctors: HashMap<String, Option<FieldsType>>,
+    pub ctors: HashMap<String, (Option<FieldsType>, usize)>,
 }
 
 impl PartialEq for Enum {
@@ -260,7 +260,7 @@ impl TypeContext {
             match ty {
                 Type::Primitive(_) => {}
                 Type::Enum(Enum { ctors, .. }) => {
-                    for (name, fields) in ctors {
+                    for (name, (fields, _)) in ctors {
                         if let Some(fields) = fields {
                             match fields {
                                 FieldsType::UnnamedFields(fields) => {
@@ -271,7 +271,7 @@ impl TypeContext {
                                     }
                                 }
                                 FieldsType::NamedFields(fields) => {
-                                    for ty in fields.values_mut() {
+                                    for (ty, _) in fields.values_mut() {
                                         if *ty == src {
                                             *ty = target;
                                         }

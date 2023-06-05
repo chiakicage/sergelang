@@ -384,7 +384,7 @@ impl TypedModule {
         let ty = self.ty_ctx.types[ty].clone();
         if let Type::Enum(ty) = ty {
             for (name, fields) in &ty.ctors {
-                if let Some(fields) = fields {
+                if let (Some(fields), _) = fields {
                     let pat_fields = patterns
                         .iter()
                         .filter(|p| match p {
@@ -449,7 +449,7 @@ impl TypedModule {
                                     FieldsType::NamedFields(ctors) => ctors
                                         .values()
                                         .copied()
-                                        .map(|ty| {
+                                        .map(|(ty, _)| {
                                             TypedPattern::Var(TypedVariable {
                                                 name: "_".to_string(),
                                                 ty: ty,
@@ -570,7 +570,7 @@ impl TypedModule {
                             .map(|p| TypedPattern::Tuple(p.clone()))
                             .collect::<Vec<_>>();
                         let new_pats = new_pats.iter().collect::<Vec<_>>();
-                        if let Some(fields) = fields {
+                        if let (Some(fields), _) = fields {
                             match fields {
                                 FieldsType::UnnamedFields(tys) => {
                                     let new_ty = self.ty_ctx.tuple_type(tys.clone());
@@ -583,7 +583,7 @@ impl TypedModule {
                                     //     Type::Tuple(ctors.values().cloned().collect::<Vec<_>>());
                                     let new_ty = self
                                         .ty_ctx
-                                        .tuple_type(ctors.values().cloned().collect::<Vec<_>>());
+                                        .tuple_type(ctors.values().cloned().map(|(ty, _)| ty).collect::<Vec<_>>());
                                     if self.pattern_non_exhaustive_check(&new_pats, new_ty) {
                                         return true;
                                     }
@@ -748,11 +748,11 @@ impl TypedModule {
                                         )
                                     })
                                     .collect::<Vec<_>>();
-                                if let Some(fields) = fields {
+                                if let (Some(fields), _) = fields {
                                     let new_first_tys = match fields {
                                         FieldsType::UnnamedFields(tys) => tys.clone(),
                                         FieldsType::NamedFields(fields) => {
-                                            fields.values().cloned().collect::<Vec<_>>()
+                                            fields.values().cloned().map(|(ty, _)| ty).collect::<Vec<_>>()
                                         }
                                     };
                                     let new_tys = new_first_tys
@@ -935,7 +935,7 @@ impl TypedModule {
                     ));
                 }
                 let r#enum = self.ty_ctx.get_enum_by_typeref(ty).unwrap().clone();
-                let ctor_fields = r#enum.ctors.get(name.0).ok_or({
+                let (ctor_fields, _) = r#enum.ctors.get(name.0).ok_or({
                     Error::custom(name.1, format!("constructor {} not found", name.0))
                 })?;
                 if let Some(ctor_fields) = ctor_fields {
@@ -982,7 +982,7 @@ impl TypedModule {
                                 let mut pat_fields = HashMap::new();
                                 let mut fields_set = HashSet::new();
                                 for (name, pattern) in fields {
-                                    let ty = ty_fields.get(name.0).copied().ok_or({
+                                    let (ty, _) = ty_fields.get(name.0).copied().ok_or({
                                         Error::custom(
                                             name.1,
                                             format!("field {} not found in enum", name.0),
@@ -1384,7 +1384,7 @@ impl TypedModule {
                         format!("enum {} not found", name.0),
                     ))?;
                 let r#enum = self.ty_ctx.get_enum_by_typeref(ty_enum).unwrap().clone();
-                let ctor_fields = r#enum.ctors.get(name.0).ok_or({
+                let (ctor_fields, _) = r#enum.ctors.get(name.0).ok_or({
                     Error::custom(name.1, format!("constructor {} not found", name.0))
                 })?;
 
@@ -1405,7 +1405,7 @@ impl TypedModule {
 
                                 let mut ty_fields = HashMap::new();
                                 for (name, val) in fields {
-                                    if let Some(ty) = ctor_fields.get(name.0).copied() {
+                                    if let Some((ty, _)) = ctor_fields.get(name.0).copied() {
                                         if ty_fields.contains_key(name.0) {
                                             return Err(Error::custom(
                                                 name.1,
@@ -1984,10 +1984,10 @@ impl TypedModule {
             self.ty_ctx.opaque_type(enum_name.to_string());
         }
 
-        for (name, ctors) in &enum_decls {
+        for (i, (name, ctors)) in enum_decls.iter().enumerate() {
             let enum_name = name.0;
 
-            let mut ctors_map: HashMap<String, Option<FieldsType>> = HashMap::new();
+            let mut ctors_map: HashMap<String, (Option<FieldsType>, usize)> = HashMap::new();
 
             for (ctor, span) in *ctors {
                 let ctor_name = ctor.name.0;
@@ -2015,16 +2015,25 @@ impl TypedModule {
                         }
                         Fields::NamedFields(fields) => {
                             let mut fields_tys = HashMap::new();
-                            for (name, (ty, _)) in fields {
+                            for (i, (name, (ty, _))) in fields.iter().enumerate() {
                                 let ty = self.ty_ctx.convert_type_str(ty)?;
-                                fields_tys.insert(name.0.to_string(), ty);
+                                if fields_tys.contains_key(name.0) {
+                                    return Err(Error::custom(
+                                        name.1,
+                                        format!(
+                                            "field {} already defined in enum {} ctor {}",
+                                            name.0, enum_name, ctor_name
+                                        ),
+                                    ));
+                                }
+                                fields_tys.insert(name.0.to_string(), (ty, i));
                             }
                             Some(FieldsType::NamedFields(fields_tys))
                         }
                     },
                     None => None,
                 };
-                ctors_map.insert(ctor_name.to_string(), fields);
+                ctors_map.insert(ctor_name.to_string(), (fields, i));
             }
             if ctors_map.is_empty() {
                 return Err(Error::custom(
