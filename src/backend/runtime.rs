@@ -71,6 +71,8 @@ pub trait RuntimeLibrary<'a> {
     runtime_function!(extract_tuple_field);   
     // enum
     runtime_function!(make_enum);
+    runtime_function!(extract_enum_tag);
+    runtime_function!(extract_enum_field);
 
     fn insert_runtime_function_declaration(&mut self); 
 }
@@ -111,6 +113,8 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
     get_runtime_function!(extract_tuple_field);
     // enum
     get_runtime_function!(make_enum);
+    get_runtime_function!(extract_enum_tag);
+    get_runtime_function!(extract_enum_field);
 
     fn insert_runtime_function_declaration(&mut self) {
         macro_rules! insert_runtime_function {
@@ -172,9 +176,11 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
             // tuple
             insert_runtime_function!(true; make_tuple: | int_type | => ptr_type);
             insert_runtime_function!(false; tuple_length: | ptr_type | => int_type);
-            insert_runtime_function!(false; extract_tuple_field: | ptr_type, int_type | => int_type);
+            insert_runtime_function!(false; extract_tuple_field: | ptr_type, int_type | => ptr_type);
             // enum
             insert_runtime_function!(false; make_enum: | int_type, ptr_type | => ptr_type);
+            insert_runtime_function!(false; extract_enum_tag: | ptr_type | => ptr_type);
+            insert_runtime_function!(false; extract_enum_field: | ptr_type, int_type | => ptr_type);
         }
     }
 }

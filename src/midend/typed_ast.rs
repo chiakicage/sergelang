@@ -1993,7 +1993,7 @@ impl TypedModule {
 
             let mut ctors_map: HashMap<String, (Option<FieldsType>, usize)> = HashMap::new();
 
-            for (ctor, span) in *ctors {
+            for (i, (ctor, span)) in ctors.iter().enumerate() {
                 let ctor_name = ctor.name.0;
                 if ctor_name.chars().next().unwrap().is_lowercase() {
                     return Err(Error::custom(

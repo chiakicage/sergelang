@@ -154,7 +154,7 @@ impl<'a> CodeGen<'a> {
                 let mut args = operands.iter()
                     .map(|operand| self.create_operand(operand))
                     .collect::<Vec<_>>();
-                let n = self.create_liteal(&LiteralKind::Int(args.len() as i32), false);
+                let n = self.create_raw_int(args.len() as i32);
                 args.insert(0, n);
                 let runtime_fn = self.get_runtime_make_tuple();
                 unsafe {
@@ -170,7 +170,7 @@ impl<'a> CodeGen<'a> {
                 let mut args = operands.iter()
                     .map(|operand| self.create_operand(operand))
                     .collect::<Vec<_>>();
-                let n = self.create_liteal(&LiteralKind::Int(args.len() as i32), false);
+                let n = self.create_raw_int(args.len() as i32);
                 args.insert(0, n);
                 let runtime_fn = self.get_runtime_make_tuple();
                 let tuple = unsafe {
@@ -190,6 +190,47 @@ impl<'a> CodeGen<'a> {
                                    [tag, tuple].as_mut_ptr(),
                                    2,
                                    to_c_str("make_enum").as_ptr())
+                }
+            },
+            RvalueEnum::ExtractTupleField(tuple, index) => {
+                let runtime_fn = self.get_runtime_extract_tuple_field();
+                let tuple_var = self.create_operand(tuple);
+                let raw_index = self.create_raw_int(*index as i32);
+                let mut args = [tuple_var, raw_index];
+                unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   args.as_mut_ptr(),
+                                   2,
+                                   to_c_str("extract_tuple_field").as_ptr())
+                }
+            },
+            RvalueEnum::ExtractEnumField(r#enum, field) => {
+                let runtime_fn = self.get_runtime_extract_enum_field();
+                let enum_var = self.create_operand(r#enum);
+                let raw_field = self.create_raw_int(*field as i32);
+                let mut args = [enum_var, raw_field];
+                unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   args.as_mut_ptr(),
+                                   2,
+                                   to_c_str("extract_enum_field").as_ptr())
+                }
+            },
+            RvalueEnum::ExtractEnumTag(r#enum) => {
+                let runtime_fn = self.get_runtime_extract_enum_tag();
+                let enum_var = self.create_operand(r#enum);
+                let mut args = [enum_var];
+                unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   args.as_mut_ptr(),
+                                   1,
+                                   to_c_str("extract_enum_tag").as_ptr())
                 }
             }
             _ => { panic!("not implemented1") }
@@ -465,6 +506,14 @@ impl<'a> CodeGen<'a> {
                 }
                 _ => panic!("not implemented!")
             }
+        }
+    }
+
+    fn create_raw_int(&self, val: i32) -> LLVMValueRef {
+        unsafe {
+            let int_type = LLVMInt32TypeInContext(self.context);
+            let raw_value = LLVMConstInt(int_type, val as u64, 0);
+            raw_value
         }
     }
 

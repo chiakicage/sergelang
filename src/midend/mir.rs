@@ -360,6 +360,206 @@ impl<'ctx> FuncBuilder<'ctx> {
         if_value
     }
 
+    pub fn build_match(
+        &mut self,
+        expr: &Operand,
+        pattern: &TypedPattern,
+        success: BlockRef,
+        fail: BlockRef,
+    ) {
+        match &pattern {
+            TypedPattern::Lit(lit) => {
+                let compare = self.create_variable(None, self.ty_ctx.get_bool());
+                let value = Rvalue {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(RvalueEnum::BinaryOperator(
+                        BinOp::Eq,
+                        expr.clone(),
+                        Operand {
+                            typ: lit.ty,
+                            val: Box::new(OperandEnum::Literal(lit.kind.clone())),
+                        },
+                    )),
+                };
+                let stmt = Stmt {
+                    left: Some(compare),
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                let compare = Operand {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(compare.into()),
+                };
+                self.terminate_current_block(Terminator::Branch(compare, success, fail), false);
+            }
+            TypedPattern::Var(var) => {
+
+                let var = if var.name == "_" {
+                    None
+                } else {
+                    Some(self.create_variable(Some(&var.name), var.ty))
+                };
+                let value = expr.clone().into();
+                let stmt = Stmt {
+                    left: var,
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                self.terminate_current_block(Terminator::Jump(success), false);
+            }
+            TypedPattern::Tuple(tuple) => {
+                let ty = self.ty_ctx.get_type_by_typeref(expr.typ);
+                if let Type::Tuple(tys) = ty {
+                    for ((i, pat), ty) in tuple.iter().enumerate().zip(tys.iter().copied()) {
+                        let field = self.create_variable(None, ty);
+                        let value = Rvalue {
+                            typ: ty,
+                            val: Box::new(RvalueEnum::ExtractTupleField(expr.clone(), i)),
+                        };
+                        let stmt = Stmt {
+                            left: Some(field),
+                            right: Some(value),
+                        };
+                        self.add_stmt_to_current_block(stmt);
+                        let field = Operand {
+                            typ: ty,
+                            val: Box::new(field.into()),
+                        };
+                        let new_success =
+                            self.create_block(Some(format!("tuple_field_{}", i).as_str()));
+                        self.build_match(&field, pat, new_success, fail);
+                        self.position = new_success;
+                    }
+                    self.terminate_current_block(Terminator::Jump(success), false);
+                } else {
+                    unreachable!();
+                }
+                
+            }
+
+            TypedPattern::Ctor {
+                ty_name,
+                name,
+                fields,
+            } => {
+                let r#enum = self.ty_ctx.get_typeref_by_name(ty_name).unwrap();
+                let r#enum = self.ty_ctx.get_enum_by_typeref(r#enum).unwrap();
+                let ctor = r#enum.ctors.get(name).unwrap();
+                let compare = self.create_variable(None, self.ty_ctx.get_bool());
+                let tag = Operand {
+                    typ: self.ty_ctx.get_i32(),
+                    val: Box::new(OperandEnum::Literal(LiteralKind::Int(ctor.1 as i32))),
+                };
+                let tag_pat_var = self.create_variable(None, self.ty_ctx.get_i32());
+                let tag_pat = Rvalue {
+                    typ: self.ty_ctx.get_i32(),
+                    val: Box::new(RvalueEnum::ExtractEnumTag(expr.clone())),
+                };
+                let tag_stmt = Stmt {
+                    left: Some(tag_pat_var),
+                    right: Some(tag_pat),
+                };
+                self.add_stmt_to_current_block(tag_stmt);
+                let tag_pat = Operand {
+                    typ: self.ty_ctx.get_i32(),
+                    val: Box::new(tag_pat_var.into()),
+                };
+                let compare_value = Rvalue {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(RvalueEnum::BinaryOperator(BinOp::Eq, tag, tag_pat)),
+                };
+                let compare_stmt = Stmt {
+                    left: Some(compare),
+                    right: Some(compare_value),
+                };
+                self.add_stmt_to_current_block(compare_stmt);
+                let compare = Operand {
+                    typ: self.ty_ctx.get_bool(),
+                    val: Box::new(compare.into()),
+                };
+                let new_success = self.create_block(Some(format!("{}_{}", ty_name, name).as_str()));
+                self.terminate_current_block(Terminator::Branch(compare, new_success, fail), false);
+                self.position = new_success;
+                if let Some(fields) = fields {
+                    match fields {
+                        PatternFieldsKind::NamedFields(fields) => {
+                            if let Some(FieldsType::NamedFields(ctor_map)) = ctor.0.as_ref() {
+                                for (name, (ty, pat)) in fields.iter() {
+                                    let index = ctor_map.get(name).unwrap().1;
+                                    let field = self.create_variable(None, *ty);
+                                    let value = Rvalue {
+                                        typ: *ty,
+                                        val: Box::new(RvalueEnum::ExtractEnumField(expr.clone(), index)),
+                                    };
+                                    let stmt = Stmt {
+                                        left: Some(field),
+                                        right: Some(value),
+                                    };
+                                    self.add_stmt_to_current_block(stmt);
+                                    let field = Operand {
+                                        typ: *ty,
+                                        val: Box::new(field.into()),
+                                    };
+                                    let new_success = self.create_block(Some(
+                                        format!("{}_{}_field_{}", ty_name, name, index).as_str(),
+                                    ));
+                                    if let Some(pat) = pat {
+                                        self.build_match(&field, pat, new_success, fail);
+                                    } else {
+                                        self.build_match(
+                                            &field,
+                                            &TypedPattern::Var(TypedVariable {
+                                                name: name.clone(),
+                                                ty: *ty,
+                                            }),
+                                            new_success,
+                                            fail,
+                                        );
+                                    }
+                                    self.position = new_success;
+                                }
+                                self.terminate_current_block(Terminator::Jump(success), false);
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        PatternFieldsKind::UnnamedFields(fields) => {
+                            if let Some(FieldsType::UnnamedFields(tys)) = ctor.0.as_ref() {
+                                for ((i, pat), ty) in fields.iter().enumerate().zip(tys.iter().copied()) {
+                                    let field = self.create_variable(None, ty);
+                                    let value = Rvalue {
+                                        typ: ty,
+                                        val: Box::new(RvalueEnum::ExtractEnumField(expr.clone(), i)),
+                                    };
+                                    let stmt = Stmt {
+                                        left: Some(field),
+                                        right: Some(value),
+                                    };
+                                    self.add_stmt_to_current_block(stmt);
+                                    let field = Operand {
+                                        typ: ty,
+                                        val: Box::new(field.into()),
+                                    };
+                                    let new_success = self.create_block(Some(
+                                        format!("{}_{}_field_{}", ty_name, name, i).as_str(),
+                                    ));
+                                    self.build_match(&field, pat, new_success, fail);
+                                    self.position = new_success;
+                                }
+                                self.terminate_current_block(Terminator::Jump(success), false);
+                            } else {
+                                unreachable!()
+                            }
+                            
+                        }
+                    }
+                } else {
+                    self.terminate_current_block(Terminator::Jump(success), false);
+                }
+            }
+        }
+    }
+
     pub fn build_expr(&mut self, expr: &TypedExpr) -> Option<Operand> {
         let expr_value = match &expr.kind {
             ExprKind::Literal(lit) => Some(OperandEnum::Literal(lit.kind.clone())),
@@ -566,6 +766,43 @@ impl<'ctx> FuncBuilder<'ctx> {
                 };
                 self.add_stmt_to_current_block(stmt);
                 Some(OperandEnum::Var(var))
+            }
+            ExprKind::Match(TypedMatch { expr, arms, ty }) => {
+                let e = self.build_expr(expr).unwrap();
+                let var = if *ty == self.ty_ctx.get_unit() {
+                    None
+                } else {
+                    Some(self.create_variable(None, *ty))
+                };
+                let end = self.create_block(Some("match_end"));
+                for arm in arms {
+                    let old_name_ctx = self.name_ctx.clone();
+                    let old_name_var_map = self.name_var_map.clone();
+                    let success = self.create_block(Some("success"));
+                    let fail = self.create_block(Some("fail"));
+                    self.build_match(&e, &arm.pattern, success, fail);
+                    self.position = success;
+                    let expr = self.build_expr(&arm.expr);
+                    if *ty != self.ty_ctx.get_unit() {
+                        let expr = expr.unwrap();
+                        let value = Rvalue {
+                            typ: *ty,
+                            val: Box::new(RvalueEnum::Operand(expr)),
+                        };
+                        let stmt = Stmt {
+                            left: var,
+                            right: Some(value),
+                        };
+                        self.add_stmt_to_current_block(stmt);
+                    }
+                    self.terminate_current_block(Terminator::Jump(end), false);
+                    self.position = fail;
+                    self.name_ctx = old_name_ctx;
+                    self.name_var_map = old_name_var_map;
+                }
+                self.terminate_current_block(Terminator::Jump(end), false);
+                self.position = end;
+                var.map(|var| OperandEnum::Var(var))
             }
             ExprKind::Let(TypedLet { name, rhs, ty }) => {
                 let var = self.create_variable(Some(name), *ty);

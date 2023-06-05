@@ -1,5 +1,6 @@
 #include "Enum.h"
 #include "Tuple.h"
+#include "Int.h"
 #include "Allocator.h"
 #include "Utility.h"
 #include <cstdint>
@@ -16,18 +17,18 @@ SergeEnum *__serge_make_enum(const uint32_t tag, const GCObjectHandle data) {
 }
 
 extern "C"
-uint32_t __serge_extract_enum_tag(const SergeEnum *obj) {
-    return obj->CtorTag;
+SergeInt32 *__serge_extract_enum_tag(const SergeEnum *obj) {
+    return __serge_alloc_i32_literal(obj->CtorTag);
 }
 
 extern "C"
 GCObjectHandle __serge_extract_enum_field(const SergeEnum *obj, 
-                                            uint32_t expected_tag, 
+                                            // SergeInt32 *expected_tag, 
                                             uint32_t field_index)
 {
-    uint32_t tag = __serge_extract_enum_tag(obj);
-    if (tag != expected_tag)
-        __serge_panic("unmatched enumeration ctor!");
+    // SergeInt32 *tag = __serge_extract_enum_tag(obj);
+    // if (tag->Data != expected_tag->Data)
+    //     __serge_panic("unmatched enumeration ctor!");
     
     if (auto tuple = dyn_cast<SergeTuple *>(obj->Data)) {
         return __serge_extract_tuple_field(tuple, field_index);
