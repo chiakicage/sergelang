@@ -4,6 +4,7 @@
 #include "Utility.h"
 #include <cstdint>
 
+extern "C"
 SergeEnum *__serge_make_enum(const uint32_t tag, const GCObjectHandle data) {
     SergeEnum *obj = (SergeEnum *)GCMalloc(sizeof(SergeEnum));
     obj->MetaData.Kind = GCMetaData::Enum;
@@ -14,10 +15,12 @@ SergeEnum *__serge_make_enum(const uint32_t tag, const GCObjectHandle data) {
     return obj;
 }
 
+extern "C"
 uint32_t __serge_extract_enum_tag(const SergeEnum *obj) {
     return obj->CtorTag;
 }
 
+extern "C"
 GCObjectHandle __serge_extract_enum_field(const SergeEnum *obj, 
                                             uint32_t expected_tag, 
                                             uint32_t field_index)

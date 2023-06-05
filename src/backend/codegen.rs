@@ -165,6 +165,32 @@ impl<'a> CodeGen<'a> {
                                    args.len() as u32,
                                    to_c_str("make_tuple").as_ptr())
                 }
+            },
+            RvalueEnum::Construct(tag, operands) => {
+                let mut args = operands.iter()
+                    .map(|operand| self.create_operand(operand))
+                    .collect::<Vec<_>>();
+                let n = self.create_liteal(&LiteralKind::Int(args.len() as i32), false);
+                args.insert(0, n);
+                let runtime_fn = self.get_runtime_make_tuple();
+                let tuple = unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   args.as_mut_ptr(),
+                                   args.len() as u32,
+                                   to_c_str("make_tuple").as_ptr())
+                };
+                let tag = self.create_liteal(&LiteralKind::Int(*tag as i32), false);
+                let runtime_fn = self.get_runtime_make_enum();
+                unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   [tag, tuple].as_mut_ptr(),
+                                   2,
+                                   to_c_str("make_enum").as_ptr())
+                }
             }
             _ => { panic!("not implemented1") }
         }
@@ -719,4 +745,5 @@ impl<'a> CodeGen<'a> {
                                  is_var_arg as LLVMBool)
         }
     }
+
 }
