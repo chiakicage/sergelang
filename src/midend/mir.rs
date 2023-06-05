@@ -134,8 +134,9 @@ struct BlockNamer {
 fn mangling(name: &str) -> String {
     match name {
         "main" => "__serge_user_main".to_string(),
-        "print" | "println" => format!("__serge_{}", name),
+        "print" | "println" | "read_i32" => format!("__serge_{}", name),
         "len" => "__serge_array_length".to_string(),
+
         _ => name.to_string(),
     }
 }
