@@ -346,7 +346,7 @@ impl TypedModule {
             return Err(Error::custom(
                 cond.1,
                 format!(
-                    "type of condition is {} but expected bool",
+                    "01${}",
                     self.ty_ctx.typeref_to_string(typed_cond.ty)
                 ),
             ));
@@ -361,7 +361,7 @@ impl TypedModule {
             return Err(Error::custom(
                 then.1,
                 format!(
-                    "type of then branch is {} and the type of else branch is {}",
+                    "02${}${}",
                     self.ty_ctx.typeref_to_string(ty_then.ty),
                     self.ty_ctx.typeref_to_string(ty_els.ty)
                 ),
@@ -871,7 +871,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         span,
                         format!(
-                            "invalid pattern type, expected {}, got {}",
+                            "03${}${}",
                             self.ty_ctx.typeref_to_string(expected_ty),
                             self.ty_ctx.typeref_to_string(lit.ty)
                         ),
@@ -893,7 +893,7 @@ impl TypedModule {
                         return Err(Error::custom(
                             span,
                             format!(
-                                "invalid pattern type, expected tuple, got {}",
+                                "04${}",
                                 self.ty_ctx.typeref_to_string(expected_ty)
                             ),
                         ))
@@ -903,7 +903,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         span,
                         format!(
-                            "invalid pattern type, expected tuple of size {}, got {}",
+                            "05${}${}",
                             tys.len(),
                             pats.len()
                         ),
@@ -928,7 +928,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         span,
                         format!(
-                            "invalid pattern type, expected {}, got {}",
+                            "06${}${}",
                             self.ty_ctx.typeref_to_string(expected_ty),
                             self.ty_ctx.typeref_to_string(ty)
                         ),
@@ -936,7 +936,7 @@ impl TypedModule {
                 }
                 let r#enum = self.ty_ctx.get_enum_by_typeref(ty).unwrap().clone();
                 let (ctor_fields, _) = r#enum.ctors.get(name.0).ok_or({
-                    Error::custom(name.1, format!("constructor {} not found", name.0))
+                    Error::custom(name.1, format!("07${}", name.0))
                 })?;
                 if let Some(ctor_fields) = ctor_fields {
                     match ctor_fields {
@@ -946,7 +946,7 @@ impl TypedModule {
                                     return Err(Error::custom(
                                         span,
                                         format!(
-                                            "invalid number of fields, expected {}, got {}",
+                                            "08${}${}",
                                             ty_fields.len(),
                                             fields.len()
                                         ),
@@ -964,7 +964,7 @@ impl TypedModule {
                                     fields: Some(pat_fields),
                                 })
                             } else {
-                                Err(Error::custom(span, format!("expected nameless fields")))
+                                Err(Error::custom(span, format!("09")))
                             }
                         }
                         FieldsType::NamedFields(ty_fields) => {
@@ -973,7 +973,7 @@ impl TypedModule {
                                     return Err(Error::custom(
                                         span,
                                         format!(
-                                            "invalid number of fields, expected {}, got {}",
+                                            "0A${}${}",
                                             ty_fields.len(),
                                             fields.len()
                                         ),
@@ -985,13 +985,13 @@ impl TypedModule {
                                     let (ty, _) = ty_fields.get(name.0).copied().ok_or({
                                         Error::custom(
                                             name.1,
-                                            format!("field {} not found in enum", name.0),
+                                            format!("0B${}", name.0),
                                         )
                                     })?;
                                     if !fields_set.insert(name.0) {
                                         return Err(Error::custom(
                                             name.1,
-                                            format!("field {} already set", name.0),
+                                            format!("0C${}", name.0),
                                         ));
                                     }
                                     if let Some(pattern) = pattern {
@@ -1008,13 +1008,13 @@ impl TypedModule {
                                     fields: Some(pat_fields),
                                 })
                             } else {
-                                Err(Error::custom(span, format!("expected named fields")))
+                                Err(Error::custom(span, format!("0D")))
                             }
                         }
                     }
                 } else {
                     match fields {
-                        Some(_) => Err(Error::custom(span, format!("expected no fields"))),
+                        Some(_) => Err(Error::custom(span, format!("0E"))),
                         None => Ok(TypedPattern::Ctor {
                             ty_name: ty_name.0.to_string(),
                             name: name.0.to_string(),
@@ -1089,7 +1089,7 @@ impl TypedModule {
                     };
                     Ok(ExprKind::Variable(var))
                 } else {
-                    Err(Error::custom(*span, format!("undefined variable {}", name)))
+                    Err(Error::custom(*span, format!("0F${}", name)))
                 }
             }
             Expr::Tuple(exprs) => {
@@ -1108,7 +1108,7 @@ impl TypedModule {
             }
             Expr::Array(exprs) => {
                 if exprs.is_empty() {
-                    return Err(Error::custom(span, "empty array is not allowed"));
+                    return Err(Error::custom(span, "10"));
                 }
 
                 let ty = self
@@ -1120,7 +1120,7 @@ impl TypedModule {
                     if ty != expr.ty {
                         return Err(Error::custom(
                             span,
-                            "array elements must have the same type",
+                            "11",
                         ));
                     }
                     ty_exprs.push(expr);
@@ -1148,7 +1148,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {}: {}",
+                                    "12${}${}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -1157,7 +1157,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {}: {}",
+                                    "13${}${}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -1173,7 +1173,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {}: {}",
+                                    "12${}${}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -1182,7 +1182,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {}: {}",
+                                    "13${}${}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -1194,7 +1194,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {}: {}",
+                                    "12${}${}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -1203,7 +1203,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {}: {}",
+                                    "13${}${}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -1215,7 +1215,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for lhs of binary operator {}: {}",
+                                    "12${}${}",
                                     op, ty_lhs_str
                                 ),
                             ));
@@ -1224,7 +1224,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of binary operator {}: {}",
+                                    "13${}${}",
                                     op, ty_rhs_str
                                 ),
                             ));
@@ -1250,7 +1250,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of unary operator {}: {}",
+                                    "14${}${}",
                                     op,
                                     self.ty_ctx.typeref_to_string(ty_rhs.ty)
                                 ),
@@ -1263,7 +1263,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 span,
                                 format!(
-                                    "invalid type for rhs of unary operator {}: {}",
+                                    "14${}${}",
                                     op,
                                     self.ty_ctx.typeref_to_string(ty_rhs.ty)
                                 ),
@@ -1292,7 +1292,7 @@ impl TypedModule {
                         return Err(Error::custom(
                             span,
                             format!(
-                                "invalid number of arguments, expected {}, got {}",
+                                "15${}${}",
                                 params.len(),
                                 args.len()
                             ),
@@ -1309,7 +1309,11 @@ impl TypedModule {
                             } else {
                                 return Err(Error::custom(
                                     arg.1,
-                                    "invalid argument type, expected array type".to_string(),
+                                    format!(
+                                        "16${}${}",
+                                        "array type".to_string(),
+                                        self.ty_ctx.typeref_to_string(ty_arg.ty)
+                                    ),
                                 ));
                             }
                         } else {
@@ -1317,7 +1321,7 @@ impl TypedModule {
                                 return Err(Error::custom(
                                     arg.1,
                                     format!(
-                                        "invalid argument type, expected {}, got {}",
+                                        "16${}${}",
                                         self.ty_ctx.typeref_to_string(*param),
                                         self.ty_ctx.typeref_to_string(ty_arg.ty)
                                     ),
@@ -1336,7 +1340,7 @@ impl TypedModule {
                     Err(Error::custom(
                         func.1,
                         format!(
-                            "invalid callable type {}",
+                            "17${}",
                             self.ty_ctx.typeref_to_string(ty_func.ty)
                         ),
                     ))
@@ -1350,7 +1354,7 @@ impl TypedModule {
                         return Err(Error::custom(
                             index.1,
                             format!(
-                                "invalid index type {}",
+                                "18${}",
                                 self.ty_ctx.typeref_to_string(ty_index.ty)
                             ),
                         ));
@@ -1364,7 +1368,7 @@ impl TypedModule {
                     Err(Error::custom(
                         array.1,
                         format!(
-                            "invalid array type {}",
+                            "19${}",
                             self.ty_ctx.typeref_to_string(ty_array.ty)
                         ),
                     ))
@@ -1381,11 +1385,11 @@ impl TypedModule {
                     .get_typeref_by_name(ty_name.0)
                     .ok_or(Error::custom(
                         ty_name.1,
-                        format!("enum {} not found", name.0),
+                        format!("1A${}", name.0),
                     ))?;
                 let r#enum = self.ty_ctx.get_enum_by_typeref(ty_enum).unwrap().clone();
                 let (ctor_fields, _) = r#enum.ctors.get(name.0).ok_or({
-                    Error::custom(name.1, format!("constructor {} not found", name.0))
+                    Error::custom(name.1, format!("1B${}", name.0))
                 })?;
 
                 if let Some(ctor_fields) = ctor_fields {
@@ -1396,7 +1400,7 @@ impl TypedModule {
                                     return Err(Error::custom(
                                         span,
                                         format!(
-                                            "invalid number of fields, expected {}, got {}",
+                                            "1C${}${}",
                                             ctor_fields.len(),
                                             fields.len()
                                         ),
@@ -1409,7 +1413,7 @@ impl TypedModule {
                                         if ty_fields.contains_key(name.0) {
                                             return Err(Error::custom(
                                                 name.1,
-                                                format!("field {} already set", name.0),
+                                                format!("1D${}", name.0),
                                             ));
                                         }
 
@@ -1421,7 +1425,7 @@ impl TypedModule {
                                                 return Err(Error::custom(
                                                     val.1,
                                                     format!(
-                                                        "invalid field type, expected {}, got {}",
+                                                        "1E${}${}",
                                                         self.ty_ctx.typeref_to_string(ty),
                                                         self.ty_ctx.typeref_to_string(ty_val.ty)
                                                     ),
@@ -1432,14 +1436,14 @@ impl TypedModule {
                                             let ty_val = sym_table.get(name.0).copied().ok_or({
                                                 Error::custom(
                                                     name.1,
-                                                    format!("variable {} not found", name.0),
+                                                    format!("1F${}", name.0),
                                                 )
                                             })?;
                                             if ty != ty_val {
                                                 return Err(Error::custom(
                                                     name.1,
                                                     format!(
-                                                        "invalid field type, expected {}, got {}",
+                                                        "20${}${}",
                                                         self.ty_ctx.typeref_to_string(ty),
                                                         self.ty_ctx.typeref_to_string(ty_val)
                                                     ),
@@ -1450,7 +1454,7 @@ impl TypedModule {
                                     } else {
                                         return Err(Error::custom(
                                             name.1,
-                                            format!("invalid field name {}", name.0),
+                                            format!("21${}", name.0),
                                         ));
                                     }
                                 }
@@ -1462,7 +1466,7 @@ impl TypedModule {
                                     ty: ty_enum,
                                 }))
                             } else {
-                                Err(Error::custom(span, format!("expected named fields")))
+                                Err(Error::custom(span, format!("22")))
                             }
                         }
                         FieldsType::UnnamedFields(ctor_fields) => {
@@ -1471,7 +1475,7 @@ impl TypedModule {
                                     return Err(Error::custom(
                                         span,
                                         format!(
-                                            "invalid number of fields, expected {}, got {}",
+                                            "23${}${}",
                                             ctor_fields.len(),
                                             fields.len()
                                         ),
@@ -1485,7 +1489,7 @@ impl TypedModule {
                                         return Err(Error::custom(
                                             field.1,
                                             format!(
-                                                "invalid field type, expected {}, got {}",
+                                                "24${}${}",
                                                 self.ty_ctx.typeref_to_string(ty),
                                                 self.ty_ctx.typeref_to_string(ty_val.ty)
                                             ),
@@ -1501,13 +1505,13 @@ impl TypedModule {
                                     ty: ty_enum,
                                 }))
                             } else {
-                                Err(Error::custom(span, format!("expected unnamed fields")))
+                                Err(Error::custom(span, format!("25")))
                             }
                         }
                     }
                 } else {
                     match fields {
-                        Some(_) => Err(Error::custom(span, format!("expected no fields"))),
+                        Some(_) => Err(Error::custom(span, format!("26"))),
                         None => Ok(ExprKind::Ctor(TypedCtor {
                             ty_name: ty_name.0.to_string(),
                             name: name.0.to_string(),
@@ -1523,7 +1527,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         expr.1,
                         format!(
-                            "type {} cannot be matched",
+                            "27${}",
                             self.ty_ctx.typeref_to_string(ty_expr.ty)
                         ),
                     ));
@@ -1540,7 +1544,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 arm.expr.1,
                                 format!(
-                                    "invalid arm type, expected {}, got {}",
+                                    "28${}${}",
                                     self.ty_ctx.typeref_to_string(ty),
                                     self.ty_ctx.typeref_to_string(ty_arm.ty)
                                 ),
@@ -1559,7 +1563,7 @@ impl TypedModule {
                 if let Some(ty) = ty {
                     let pats = ty_arms.iter().map(|arm| &arm.pattern).collect::<Vec<_>>();
                     if self.pattern_non_exhaustive_check(&pats, ty_expr.ty) {
-                        return Err(Error::custom(span, format!("pattern not exhaustive")));
+                        return Err(Error::custom(span, format!("29")));
                     }
                     Ok(ExprKind::Match(TypedMatch {
                         expr: Box::new(ty_expr),
@@ -1567,7 +1571,7 @@ impl TypedModule {
                         ty,
                     }))
                 } else {
-                    Err(Error::custom(span, format!("expected at least one arm")))
+                    Err(Error::custom(span, format!("2A")))
                 }
             }
             Expr::Closure {
@@ -1596,7 +1600,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         body.1,
                         format!(
-                            "invalid return type, expected {}, got {}",
+                            "2B${}${}",
                             self.ty_ctx.typeref_to_string(return_ty),
                             self.ty_ctx.typeref_to_string(ty_body.ty)
                         ),
@@ -1619,7 +1623,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         rhs.1,
                         format!(
-                            "invalid rhs type, expected {}, got {}",
+                            "2C${}${}",
                             self.ty_ctx.typeref_to_string(ty),
                             self.ty_ctx.typeref_to_string(ty_rhs.ty)
                         ),
@@ -1639,7 +1643,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         cond.1,
                         format!(
-                            "invalid condition type, expected bool, got {}",
+                            "2D${}",
                             self.ty_ctx.typeref_to_string(ty_cond.ty)
                         ),
                     ));
@@ -1653,7 +1657,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         body.1,
                         format!(
-                            "invalid body type, expected no type, got {}",
+                            "2E${}",
                             self.ty_ctx.typeref_to_string(ty_body.ty)
                         ),
                     ));
@@ -1677,7 +1681,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         start.1,
                         format!(
-                            "invalid start type, expected i32, got {}",
+                            "2F${}",
                             self.ty_ctx.typeref_to_string(ty_start.ty)
                         ),
                     ));
@@ -1686,7 +1690,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         end.1,
                         format!(
-                            "invalid end type, expected i32, got {}",
+                            "30${}",
                             self.ty_ctx.typeref_to_string(ty_end.ty)
                         ),
                     ));
@@ -1701,7 +1705,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         body.1,
                         format!(
-                            "invalid body type, expected no type, got {}",
+                            "31${}",
                             self.ty_ctx.typeref_to_string(ty_body.ty)
                         ),
                     ));
@@ -1725,7 +1729,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         span,
                         format!(
-                            "invalid return type, expected {}, got {}",
+                            "32${}${}",
                             self.ty_ctx.typeref_to_string(return_ty),
                             self.ty_ctx.typeref_to_string(ty_expr)
                         ),
@@ -1744,7 +1748,7 @@ impl TypedModule {
                     return Err(Error::custom(
                         rhs.1,
                         format!(
-                            "invalid rhs type, expected {}, got {}",
+                            "33${}${}",
                             self.ty_ctx.typeref_to_string(ty_name.ty),
                             self.ty_ctx.typeref_to_string(ty_rhs.ty)
                         ),
@@ -1757,7 +1761,7 @@ impl TypedModule {
                         return Err(Error::custom(
                             name.1,
                             format!(
-                                "invalid lhs type, expected variable or index, got {}",
+                                "34${}",
                                 self.ty_ctx.typeref_to_string(ty_name.ty)
                             ),
                         ));
@@ -1819,7 +1823,7 @@ impl TypedModule {
                     if !in_loop {
                         return Err(Error::custom(
                             inner_expr.1,
-                            "break/continue outside of loop".to_string(),
+                            "35".to_string(),
                         ));
                     }
                 }
@@ -1828,14 +1832,14 @@ impl TypedModule {
                         if return_ty == self.ty_ctx.get_unit() {
                             return Err(Error::custom(
                                 inner_expr.1,
-                                "invalid return, expected no return type".to_string(),
+                                "36".to_string(),
                             ));
                         }
                         if ty_expr.ty != return_ty {
                             return Err(Error::custom(
                                 inner_expr.1,
                                 format!(
-                                    "invalid return type, expected {}, got {}",
+                                    "37${}${}",
                                     self.ty_ctx.typeref_to_string(return_ty),
                                     self.ty_ctx.typeref_to_string(ty_expr.ty)
                                 ),
@@ -1847,7 +1851,7 @@ impl TypedModule {
                             return Err(Error::custom(
                                 inner_expr.1,
                                 format!(
-                                    "invalid return type, expected {}, got no return type",
+                                    "38${}",
                                     self.ty_ctx.typeref_to_string(return_ty),
                                 ),
                             ));
@@ -1888,7 +1892,7 @@ impl TypedModule {
             return Err(Error::custom(
                 body.1,
                 format!(
-                    "invalid return type, expected {}, got {}",
+                    "37${}${}",
                     self.ty_ctx.typeref_to_string(return_ty),
                     self.ty_ctx.typeref_to_string(ty_body.ty)
                 ),
@@ -1935,7 +1939,7 @@ impl TypedModule {
             if self.func_table.contains_key(func_name) {
                 return Err(Error::custom(
                     name.1,
-                    format!("function {} already defined", func_name),
+                    format!("39${}", func_name),
                 ));
             }
 
@@ -1971,13 +1975,13 @@ impl TypedModule {
             if enum_set.contains(enum_name) {
                 return Err(Error::custom(
                     name.1,
-                    format!("enum {} already defined", enum_name),
+                    format!("3A${}", enum_name),
                 ));
             }
             if enum_name.chars().next().unwrap().is_lowercase() {
                 return Err(Error::custom(
                     name.1,
-                    "enum name must start with an uppercase letter".to_string(),
+                    "3B".to_string(),
                 ));
             }
             enum_set.insert(enum_name.to_string());
@@ -1994,13 +1998,13 @@ impl TypedModule {
                 if ctor_name.chars().next().unwrap().is_lowercase() {
                     return Err(Error::custom(
                         *span,
-                        "enum name must start with an uppercase letter".to_string(),
+                        "3C".to_string(),
                     ));
                 }
                 if ctors_map.contains_key(ctor_name) {
                     return Err(Error::custom(
                         *span,
-                        format!("ctor {} already defined in enum {}", ctor_name, enum_name),
+                        format!("3D${}${}", ctor_name, enum_name),
                     ));
                 }
                 let fields = match &ctor.fields {
@@ -2038,7 +2042,7 @@ impl TypedModule {
             if ctors_map.is_empty() {
                 return Err(Error::custom(
                     name.1,
-                    format!("enum {} must have at least one ctor", enum_name),
+                    format!("3E${}", enum_name),
                 ));
             }
             let enum_ty = Enum {

@@ -1,7 +1,7 @@
 use ariadne::{sources, Color, Label, Report, ReportKind};
 use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
-
+use crate::utils::error::{get_code, get_msg};
 mod ast;
 mod backend;
 mod frontend;
@@ -217,10 +217,12 @@ fn main() {
         .chain(parse_errs.into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
-                .with_message(e.to_string())
+                .with_code(get_code(&e.to_string()))
+                .with_message(get_msg(&e.to_string()))
                 .with_label(
                     Label::new((filename.clone(), e.span().into_range()))
-                        .with_message(e.reason().to_string())
+                        // .with_message(e.reason().to_string())
+                        .with_message(get_msg(&e.to_string()))
                         .with_color(Color::Red),
                 )
                 .finish()
