@@ -327,10 +327,10 @@ impl TypeContext {
         match ty {
             TypeStr::Named((s, span)) => {
                 if *s == "unit" {
-                    return Err(Error::custom(*span, "unit type is not allowed".to_string()));
+                    return Err(Error::custom(*span, "3F".to_string()));
                 }
                 self.get_typeref_by_name(s)
-                    .ok_or(Error::custom(*span, format!("unknown type {}", s)))
+                    .ok_or(Error::custom(*span, format!("40${}", s)))
             }
             TypeStr::Func(params, ret) => {
                 let params = params
