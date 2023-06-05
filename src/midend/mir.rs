@@ -101,7 +101,7 @@ pub enum RvalueEnum {
     Call(String, Vec<Operand>),
     Operand(Operand),
     UnboxedOperand(Operand),
-    Intrinsic(&'static str, Vec<Operand>),
+    // Intrinsic(&'static str, Vec<Operand>),
     Index(Operand, Operand),
     MakeTuple(Vec<Operand>),
     Construct(usize, Vec<Operand>),
@@ -129,6 +129,15 @@ pub struct MIR {
 struct BlockNamer {
     prefix: String,
     counter: usize,
+}
+
+fn mangling(name: &str) -> String {
+    match name {
+        "main" => "__serge_user_main".to_string(),
+        "print" | "println" => format!("__serge_{}", name),
+        "len" => "__serge_array_length".to_string(),
+        _ => name.to_string(),
+    }
 }
 
 impl BlockNamer {
@@ -216,7 +225,7 @@ impl<'ctx> FuncBuilder<'ctx> {
         };
 
         let mut func = Func {
-            name: func.name.clone(),
+            name: mangling(func.name.as_str()),
             typ: func.ty,
             blocks,
             variables,
@@ -446,7 +455,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                         if let Type::Callable { ret, .. } = func_ty {
                             let value = Rvalue {
                                 typ: ret,
-                                val: Box::new(RvalueEnum::Call(name.clone(), args)),
+                                val: Box::new(RvalueEnum::Call(mangling(name.as_str()), args)),
                             };
                             let var = if ret != self.ty_ctx.get_unit() {
                                 Some(self.create_variable(None, ret))

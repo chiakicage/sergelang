@@ -211,6 +211,17 @@ impl TypeContext {
         let ty = Type::Tuple(types);
         self.get_or_insert_type(ty)
     }
+    pub fn array_type(&mut self, ty: TypeRef) -> TypeRef {
+        let ty = Type::Array(ty);
+        self.get_or_insert_type(ty)
+    }
+
+    pub fn is_array(&self, ty: TypeRef) -> bool {
+        if let Type::Array(_) = &self.types[ty] {
+            return true;
+        }
+        false
+    }
     
     pub fn get_or_insert_type(&mut self, ty: Type) -> TypeRef {
         if let Some(ty_ref) = self.type_ref_map.get(&ty) {

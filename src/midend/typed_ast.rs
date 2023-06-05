@@ -1301,17 +1301,31 @@ impl TypedModule {
                     let mut ty_args = Vec::new();
                     for (param, arg) in params.iter().zip(args.iter()) {
                         let ty_arg = self.expr_type_check(arg, sym_table, return_ty, in_loop)?;
-                        if *param != self.ty_ctx.get_unit() && *param != ty_arg.ty {
-                            return Err(Error::custom(
-                                arg.1,
-                                format!(
-                                    "invalid argument type, expected {}, got {}",
-                                    self.ty_ctx.typeref_to_string(*param),
-                                    self.ty_ctx.typeref_to_string(ty_arg.ty)
-                                ),
-                            ));
+                        if *param == self.ty_ctx.get_unit() {
+                            ty_args.push(ty_arg);
+                        } else if *param == self.ty_ctx.array_type(self.ty_ctx.get_unit()) {
+                            if self.ty_ctx.is_array(ty_arg.ty) {
+                                ty_args.push(ty_arg);
+                            } else {
+                                return Err(Error::custom(
+                                    arg.1,
+                                    "invalid argument type, expected array type".to_string(),
+                                ));
+                            }
+                        } else {
+                            if *param != ty_arg.ty {
+                                return Err(Error::custom(
+                                    arg.1,
+                                    format!(
+                                        "invalid argument type, expected {}, got {}",
+                                        self.ty_ctx.typeref_to_string(*param),
+                                        self.ty_ctx.typeref_to_string(ty_arg.ty)
+                                    ),
+                                ));
+                            } else {
+                                ty_args.push(ty_arg);
+                            }
                         }
-                        ty_args.push(ty_arg);
                     }
                     Ok(ExprKind::Call(TypedCall {
                         func: Box::new(ty_func),
@@ -1737,8 +1751,8 @@ impl TypedModule {
                     ));
                 }
                 match &ty_name.kind {
-                    ExprKind::Index(_) => {},
-                    ExprKind::Variable(_) => {},
+                    ExprKind::Index(_) => {}
+                    ExprKind::Variable(_) => {}
                     _ => {
                         return Err(Error::custom(
                             name.1,
@@ -2035,13 +2049,20 @@ impl TypedModule {
         let println = self
             .ty_ctx
             .func_type(vec![self.ty_ctx.get_unit()], self.ty_ctx.get_unit());
+        let array_any = self.ty_ctx.array_type(self.ty_ctx.get_unit());
+        let len = self.ty_ctx.func_type(
+            vec![array_any],
+            self.ty_ctx.get_i32(),
+        );
         // let putch = self
         //     .ty_ctx
         //     .func_type(vec![self.ty_ctx.get_char()], self.ty_ctx.get_unit());
 
-        self.func_table = self.func_table.insert("__serge_read_i32".to_string(), read_i32);
+        self.func_table = self.func_table.insert("read_i32".to_string(), read_i32);
         // self.func_table = self.func_table.insert("getch".to_string(), getch);
-        self.func_table = self.func_table.insert("__serge_println".to_string(), println);
+        self.func_table = self.func_table.insert("print".to_string(), println);
+        self.func_table = self.func_table.insert("println".to_string(), println);
+        self.func_table = self.func_table.insert("len".to_string(), len);
         // self.func_table = self.func_table.insert("putch".to_string(), putch);
         // self.func_table = self.func_table.insert("starttime".to_string(), starttime);
         // self.func_table = self.func_table.insert("stoptime".to_string(), stoptime);
