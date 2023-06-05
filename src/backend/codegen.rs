@@ -150,6 +150,22 @@ impl<'a> CodeGen<'a> {
                 }
             }
             RvalueEnum::Operand(operand) => self.create_operand(operand),
+            RvalueEnum::MakeTuple(operands) => {
+                let mut args = operands.iter()
+                    .map(|operand| self.create_operand(operand))
+                    .collect::<Vec<_>>();
+                let n = self.create_liteal(&LiteralKind::Int(args.len() as i32), false);
+                args.insert(0, n);
+                let runtime_fn = self.get_runtime_make_tuple();
+                unsafe {
+                    LLVMBuildCall2(self.builder,
+                                   self.function_type_map.get(&runtime_fn).unwrap().clone(),
+                                   runtime_fn,
+                                   args.as_mut_ptr(),
+                                   args.len() as u32,
+                                   to_c_str("make_tuple").as_ptr())
+                }
+            }
             _ => { panic!("not implemented1") }
         }
     }

@@ -148,7 +148,7 @@ fn main() {
                     let mut mir = MIR::create_from_typed_ast(&typed_ast);
                     println!("generate middle IR");
                     println!("{:#?}", mir);
-                    // println!("{:#?}", mir);
+                    // emit LLVM IR
                     let mut llvm_ir_codegen = CodeGen::new(&mir.name_ctx, &mir.ty_ctx);
                     llvm_ir_codegen.create_module(&mir);
                     // emit LLVM IR file
@@ -160,6 +160,7 @@ fn main() {
                             err_string.as_mut_ptr(),
                         );
                     }
+                    println!("emit LLVM IR file done");
                     // emit object
                     emit_object(llvm_ir_codegen.module);
                     // call linker here

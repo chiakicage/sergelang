@@ -106,8 +106,8 @@ pub enum RvalueEnum {
     MakeTuple(Vec<Operand>),
     Construct(usize, Vec<Operand>),
     ExtractTupleField(Operand, usize), // get the i-th field of a tuple operand
-    ExtractEnumField(usize, Operand, usize), // get the i-th field of a enum operand 
-    ExtractEnumTag(Operand)
+    ExtractEnumField(Operand, usize),  // get the i-th field of a enum operand
+    ExtractEnumTag(Operand),
 }
 
 impl From<Operand> for Rvalue {
@@ -367,6 +367,23 @@ impl<'ctx> FuncBuilder<'ctx> {
                 let var = self.name_var_map.get(&var.name).copied().unwrap();
                 Some(OperandEnum::Var(var))
             }
+            ExprKind::Tuple(TypedTuple { elements, ty }) => {
+                let elements = elements
+                    .iter()
+                    .map(|e| self.build_expr(e).unwrap())
+                    .collect::<Vec<_>>();
+                let tuple = self.create_variable(None, *ty);
+                let value = Rvalue {
+                    typ: *ty,
+                    val: Box::new(RvalueEnum::MakeTuple(elements)),
+                };
+                let stmt = Stmt {
+                    left: Some(tuple),
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                Some(OperandEnum::Var(tuple))
+            }
             ExprKind::Array(TypedArray { elements, ty }) => {
                 let elements = elements
                     .iter()
@@ -375,14 +392,11 @@ impl<'ctx> FuncBuilder<'ctx> {
                 let array = self.create_variable(None, *ty);
                 let value = Rvalue {
                     typ: *ty,
-                    val: Box::new(RvalueEnum::Call(
-                        "__serge_alloc_array".to_string(),
-                        vec![]
-                    ))
+                    val: Box::new(RvalueEnum::Call("__serge_alloc_array".to_string(), vec![])),
                 };
                 let stmt = Stmt {
                     left: Some(array),
-                    right: Some(value)
+                    right: Some(value),
                 };
                 self.add_stmt_to_current_block(stmt);
                 elements.iter().for_each(|e| {
@@ -393,15 +407,15 @@ impl<'ctx> FuncBuilder<'ctx> {
                             vec![
                                 Operand {
                                     typ: self.ty_ctx.get_i32(),
-                                    val: Box::new(OperandEnum::Var(array))
+                                    val: Box::new(OperandEnum::Var(array)),
                                 },
-                                e.clone()
-                            ]
-                        ))
+                                e.clone(),
+                            ],
+                        )),
                     };
                     let stmt = Stmt {
                         left: None,
-                        right: Some(call)
+                        right: Some(call),
                     };
                     self.add_stmt_to_current_block(stmt);
                 });
@@ -490,7 +504,69 @@ impl<'ctx> FuncBuilder<'ctx> {
                 };
                 self.add_stmt_to_current_block(stmt);
                 Some(OperandEnum::Var(var))
-            },
+            }
+            ExprKind::Ctor(TypedCtor {
+                ty_name,
+                name,
+                fields,
+                ty,
+            }) => {
+                let r#enum = self.ty_ctx.get_enum_by_typeref(*ty).unwrap();
+                // let tag = r#enum.get_tag_by_ctor_name(name.as_str()).unwrap();
+                let (ctor_fields, tag) = r#enum.ctors.get(name).unwrap();
+                let exprs = if let Some(ctor_fields) = ctor_fields {
+                    match ctor_fields {
+                        FieldsType::UnnamedFields(tys) => {
+                            if let Some(ExprFieldsKind::UnnamedFields(exprs)) = fields {
+                                let exprs = exprs
+                                    .iter()
+                                    .map(|e| self.build_expr(e).unwrap())
+                                    .collect::<Vec<_>>();
+                                exprs
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        FieldsType::NamedFields(fields_map) => {
+                            if let Some(ExprFieldsKind::NamedFields(bindings)) = fields {
+                                let mut exprs = Vec::new();
+                                exprs.resize(fields_map.len(), None);
+                                for (name, expr) in bindings {
+                                    let (ty, index) = fields_map.get(name).unwrap();
+                                    if let Some(expr) = expr {
+                                        exprs[*index] = Some(self.build_expr(expr).unwrap());
+                                    } else {
+                                        exprs[*index] = Some(Operand {
+                                            typ: *ty,
+                                            val: Box::new(
+                                                self.get_var_by_name(name.as_str()).into(),
+                                            ),
+                                        })
+                                    }
+                                }
+                                let exprs =
+                                    exprs.into_iter().map(|e| e.unwrap()).collect::<Vec<_>>();
+                                exprs
+                            } else {
+                                unreachable!();
+                            }
+                        }
+                    }
+                } else {
+                    Vec::new()
+                };
+                let var = self.create_variable(None, *ty);
+                let value = Rvalue {
+                    typ: *ty,
+                    val: Box::new(RvalueEnum::Construct(tag.clone(), exprs)),
+                };
+                let stmt = Stmt {
+                    left: Some(var),
+                    right: Some(value),
+                };
+                self.add_stmt_to_current_block(stmt);
+                Some(OperandEnum::Var(var))
+            }
             ExprKind::Let(TypedLet { name, rhs, ty }) => {
                 let var = self.create_variable(Some(name), *ty);
                 let rhs = self.build_expr(rhs).unwrap();
@@ -642,7 +718,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                 let jmp = Terminator::Jump(self.continue_block.unwrap());
                 self.terminate_current_block(jmp, true);
                 // self.position = self.create_block(Some("continue"));
-                
+
                 None
             }
             ExprKind::Assign(TypedAssign { name, rhs }) => {
@@ -656,7 +732,7 @@ impl<'ctx> FuncBuilder<'ctx> {
                             val: Box::new(RvalueEnum::Call(
                                 "__serge_array_write_index".to_string(),
                                 vec![array, index, value],
-                            ))
+                            )),
                         };
                         let stmt = Stmt {
                             left: None,
@@ -679,10 +755,8 @@ impl<'ctx> FuncBuilder<'ctx> {
                         self.add_stmt_to_current_block(stmt);
                         None
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
-                
-                
             }
             _ => todo!(),
         };
