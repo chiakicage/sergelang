@@ -2025,8 +2025,8 @@ impl TypedModule {
                                     return Err(Error::custom(
                                         name.1,
                                         format!(
-                                            "field {} already defined in enum {} ctor {}",
-                                            name.0, enum_name, ctor_name
+                                            "3E${}${}",
+                                            name.0, ctor_name
                                         ),
                                     ));
                                 }
@@ -2042,7 +2042,7 @@ impl TypedModule {
             if ctors_map.is_empty() {
                 return Err(Error::custom(
                     name.1,
-                    format!("3E${}", enum_name),
+                    format!("3F${}", enum_name),
                 ));
             }
             let enum_ty = Enum {

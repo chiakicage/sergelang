@@ -338,10 +338,10 @@ impl TypeContext {
         match ty {
             TypeStr::Named((s, span)) => {
                 if *s == "unit" {
-                    return Err(Error::custom(*span, "3F".to_string()));
+                    return Err(Error::custom(*span, "40".to_string()));
                 }
                 self.get_typeref_by_name(s)
-                    .ok_or(Error::custom(*span, format!("40${}", s)))
+                    .ok_or(Error::custom(*span, format!("41${}", s)))
             }
             TypeStr::Func(params, ret) => {
                 let params = params
