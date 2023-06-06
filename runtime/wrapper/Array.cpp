@@ -1,6 +1,7 @@
 #include "GCObject.h"
 #include "Allocator.h"
 #include "Utility.h"
+#include "Int.h"
 #include <cstring>
 #include <algorithm>
 
@@ -20,12 +21,12 @@ SergeArray *__serge_alloc_array() {
 }
 
 extern "C"
-int __serge_array_length(const SergeArray *array) {
-    return array->Length;
+SergeInt32 *__serge_array_length(const SergeArray *array) {
+    return __serge_alloc_i32_literal(array->Length);
 }
 
 extern "C"
-GCObjectHandle __serge_array_index(const SergeArray *array, const uint32_t index) {
+GCObjectHandle __serge_array_read_index(const SergeArray *array, const uint32_t index) {
     if (array->Length < index)
         __serge_panic("array index exceeded!");
     return static_cast<GCObjectHandle *>(array->DataPtr)[index];

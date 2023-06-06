@@ -4,7 +4,7 @@ enum List {
 }
 
 
-fn __serge_user_main() {
+fn main() {
 	// let a: i32 = __serge_read_i32();
 	// let b: i32 = __serge_read_i32();
 	// let c: i32 = a + b;
@@ -37,9 +37,9 @@ fn __serge_user_main() {
 	// }
 
 	let a: [i32] = [1, 2, 3, 4, 5];
-	__serge_println(a);
+	println(a);
 	a[0] = 10;
-	__serge_println(a);
+	println(a);
 	// __serge_println(list);
 	
 }

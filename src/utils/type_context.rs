@@ -26,13 +26,13 @@ pub enum PrimitiveType {
 #[derive(Debug, Clone)]
 pub enum FieldsType {
     UnnamedFields(Vec<TypeRef>),
-    NamedFields(HashMap<String, TypeRef>),
+    NamedFields(HashMap<String, (TypeRef, usize)>),
 }
 
 #[derive(Debug, Clone)]
 pub struct Enum {
     pub name: String,
-    pub ctors: HashMap<String, Option<FieldsType>>,
+    pub ctors: HashMap<String, (Option<FieldsType>, usize)>,
 }
 
 impl PartialEq for Enum {
@@ -211,6 +211,17 @@ impl TypeContext {
         let ty = Type::Tuple(types);
         self.get_or_insert_type(ty)
     }
+    pub fn array_type(&mut self, ty: TypeRef) -> TypeRef {
+        let ty = Type::Array(ty);
+        self.get_or_insert_type(ty)
+    }
+
+    pub fn is_array(&self, ty: TypeRef) -> bool {
+        if let Type::Array(_) = &self.types[ty] {
+            return true;
+        }
+        false
+    }
     
     pub fn get_or_insert_type(&mut self, ty: Type) -> TypeRef {
         if let Some(ty_ref) = self.type_ref_map.get(&ty) {
@@ -249,7 +260,7 @@ impl TypeContext {
             match ty {
                 Type::Primitive(_) => {}
                 Type::Enum(Enum { ctors, .. }) => {
-                    for (name, fields) in ctors {
+                    for (name, (fields, _)) in ctors {
                         if let Some(fields) = fields {
                             match fields {
                                 FieldsType::UnnamedFields(fields) => {
@@ -260,7 +271,7 @@ impl TypeContext {
                                     }
                                 }
                                 FieldsType::NamedFields(fields) => {
-                                    for ty in fields.values_mut() {
+                                    for (ty, _) in fields.values_mut() {
                                         if *ty == src {
                                             *ty = target;
                                         }
@@ -327,10 +338,10 @@ impl TypeContext {
         match ty {
             TypeStr::Named((s, span)) => {
                 if *s == "unit" {
-                    return Err(Error::custom(*span, "unit type is not allowed".to_string()));
+                    return Err(Error::custom(*span, "40".to_string()));
                 }
                 self.get_typeref_by_name(s)
-                    .ok_or(Error::custom(*span, format!("unknown type {}", s)))
+                    .ok_or(Error::custom(*span, format!("41${}", s)))
             }
             TypeStr::Func(params, ret) => {
                 let params = params

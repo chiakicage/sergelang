@@ -69,6 +69,10 @@ pub trait RuntimeLibrary<'a> {
     runtime_function!(make_tuple);
     runtime_function!(tuple_length);
     runtime_function!(extract_tuple_field);   
+    // enum
+    runtime_function!(make_enum);
+    runtime_function!(extract_enum_tag);
+    runtime_function!(extract_enum_field);
 
     fn insert_runtime_function_declaration(&mut self); 
 }
@@ -107,6 +111,10 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
     get_runtime_function!(make_tuple);
     get_runtime_function!(tuple_length);
     get_runtime_function!(extract_tuple_field);
+    // enum
+    get_runtime_function!(make_enum);
+    get_runtime_function!(extract_enum_tag);
+    get_runtime_function!(extract_enum_field);
 
     fn insert_runtime_function_declaration(&mut self) {
         macro_rules! insert_runtime_function {
@@ -161,14 +169,18 @@ impl<'a> RuntimeLibrary<'a> for CodeGen<'a> {
             insert_runtime_function!(false; alloc_unit: |  | => ptr_type);
             // array
             insert_runtime_function!(false; alloc_array: | | => ptr_type);
-            insert_runtime_function!(false; array_length: |  | => int_type);
+            insert_runtime_function!(false; array_length: |  | => ptr_type);
             insert_runtime_function!(false; array_read_index: | ptr_type, int_type | => ptr_type);
             insert_runtime_function!(false; array_write_index: | ptr_type, ptr_type, ptr_type| => void_type);
             insert_runtime_function!(false; array_push_back: | ptr_type, ptr_type | => void_type);
             // tuple
-            insert_runtime_function!(true; make_tuple: | int_type | => void_type);
+            insert_runtime_function!(true; make_tuple: | int_type | => ptr_type);
             insert_runtime_function!(false; tuple_length: | ptr_type | => int_type);
-            insert_runtime_function!(false; extract_tuple_field: | ptr_type, int_type | => int_type);
+            insert_runtime_function!(false; extract_tuple_field: | ptr_type, int_type | => ptr_type);
+            // enum
+            insert_runtime_function!(false; make_enum: | int_type, ptr_type | => ptr_type);
+            insert_runtime_function!(false; extract_enum_tag: | ptr_type | => ptr_type);
+            insert_runtime_function!(false; extract_enum_field: | ptr_type, int_type | => ptr_type);
         }
     }
 }

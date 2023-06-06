@@ -1,7 +1,7 @@
 use ariadne::{sources, Color, Label, Report, ReportKind};
 use chumsky::prelude::*;
 // use std::{borrow::Borrow, collections::HashMap, hash::Hash};
-
+use crate::utils::error::{get_code, get_msg};
 mod ast;
 mod backend;
 mod frontend;
@@ -148,7 +148,7 @@ fn main() {
                     let mut mir = MIR::create_from_typed_ast(&typed_ast);
                     println!("generate middle IR");
                     println!("{:#?}", mir);
-                    // println!("{:#?}", mir);
+                    // emit LLVM IR
                     let mut llvm_ir_codegen = CodeGen::new(&mir.name_ctx, &mir.ty_ctx);
                     llvm_ir_codegen.create_module(&mir);
                     // emit LLVM IR file
@@ -160,6 +160,7 @@ fn main() {
                             err_string.as_mut_ptr(),
                         );
                     }
+                    println!("emit LLVM IR file done");
                     // emit object
                     emit_object(llvm_ir_codegen.module);
                     // call linker here
@@ -217,10 +218,12 @@ fn main() {
         .chain(parse_errs.into_iter())
         .for_each(|e| {
             Report::build(ReportKind::Error, filename.clone(), e.span().start)
-                .with_message(e.to_string())
+                .with_code(get_code(&e.to_string()))
+                .with_message(get_msg(&e.to_string()))
                 .with_label(
                     Label::new((filename.clone(), e.span().into_range()))
-                        .with_message(e.reason().to_string())
+                        // .with_message(e.reason().to_string())
+                        .with_message(get_msg(&e.to_string()))
                         .with_color(Color::Red),
                 )
                 .finish()

@@ -9,7 +9,7 @@ extern "C"
 SergeArray *__serge_alloc_array();
 
 extern "C"
-int __serge_array_length(const SergeArray *array);
+SergeInt32 * __serge_array_length(const SergeArray *array);
 
 extern "C"
 GCObjectHandle __serge_array_read_index(const SergeArray *array, const uint32_t index);

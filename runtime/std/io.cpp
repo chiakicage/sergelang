@@ -118,7 +118,7 @@ void print_object_internal(GCObjectHandle Handle) {
             printf("[");
             for (int index = 0; index < size; ++index) {
                 print_object_internal(data[index]);
-                printf(", ");
+                if (index + 1 != size) printf(", ");
             }
             printf("]");
             break;
@@ -129,7 +129,7 @@ void print_object_internal(GCObjectHandle Handle) {
             printf("(");
             for (int index = 0; index < size; ++index) {
                 print_object_internal(Tuple->Fields[index]);
-                printf(", ");
+                if (index + 1 != size) printf(", ");
             }
             printf(")");
             break;
