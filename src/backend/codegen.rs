@@ -86,7 +86,7 @@ impl<'a> CodeGen<'a> {
                 let lhs_raw = self.create_raw_operand(lhs);
                 let rhs_raw = self.create_raw_operand(rhs);
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mul => self.create_arithematic(op, typ, lhs_raw, rhs_raw),
+                    BinOp::Add | BinOp::Sub | BinOp::Div | BinOp::Mul | BinOp::Mod => self.create_arithematic(op, typ, lhs_raw, rhs_raw),
                     BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
                         let typ = if lhs.typ == self.ty_ctx.get_f64() 
                             || rhs.typ == self.ty_ctx.get_f64() 

@@ -3,6 +3,18 @@ enum List {
     Cons(i32, List),
 }
 
+// struct A {
+// 	x: i32,
+// 	y: i32,
+// }
+
+enum A {
+	A {
+		x: i32,
+		y: i32,
+	},
+}
+
 fn print_list(list: List) {
 	match list {
 		List::Nil => {},

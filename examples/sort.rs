@@ -14,5 +14,13 @@ fn main() -> i32 {
 	}
 	println(a);
 	println(len(a));
+	let sum: i32 = 0;
+	for i in 0..len(a) {
+		if i % 2 == 0 {
+			continue;
+		} 
+		sum = sum + a[i];
+	}
+	println(sum);
 	0
 }
